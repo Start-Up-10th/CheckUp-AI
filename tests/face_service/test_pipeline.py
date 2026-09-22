@@ -58,3 +58,12 @@ def test_track_failures_are_isolated_and_reset():
     assert tracks[1].failures == 0
     manager.record_success(tracks[0])
     assert tracks[0].failures == 0
+
+
+def test_failure_count_uses_observation_groups_not_each_frame():
+    manager = TrackManager()
+    track = manager.assign([(0, 0, 1, 1)])[0]
+    assert [manager.observe_quality(track) for _ in range(3)] == [False, False, True]
+    assert manager.record_failure(track) == 1
+    assert [manager.observe_quality(track) for _ in range(5)] == [False, False, False, False, False]
+    assert [manager.observe_quality(track) for _ in range(3)] == [False, False, True]

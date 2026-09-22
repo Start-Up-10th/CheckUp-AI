@@ -16,8 +16,10 @@ def fetch() -> None:
         target = MODEL_DIR / item["filename"]
         if not target.exists():
             urllib.request.urlretrieve(item["url"], target)
-        digest = hashlib.sha256(target.read_bytes()).hexdigest()
-        if digest != item["sha256"]:
+        if target.stat().st_size != item["size"]:
+            raise SystemExit(f"size mismatch: {target}")
+        digest = hashlib.new(item.get("algorithm", "sha384"), target.read_bytes()).hexdigest()
+        if digest != item["checksum"]:
             raise SystemExit(f"checksum mismatch: {target}")
 
 

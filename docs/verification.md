@@ -32,7 +32,7 @@ REQ 연결의 완전성은 파일 내 정의된 REQ를 기준으로 한다. 인�
 | 개인정보 | DB·캐시·로그·임시 파일·백업에 원본 잔존 없음; 벡터 대상 삭제 후 복원 시 재출현 없음 |
 | 인프라 | Compose 검증, 서비스 health, 실제 HTTPS 카메라, secret 주입, 볼륨 영속, 복원·롤백, VM 만료 확인 |
 
-서비스 생성 후 실제 명령·실행 디렉터리를 이 문서에 등록한다. 현재 없는 npm/Gradle/pytest 명령을 CI에 성공하는 빈 작업으로 추가하지 않는다.
+서비스 생성 후 루트에서 `uv sync --frozen`, `uv run pytest -q`, `uv run ruff check face_api.py face_config.py face_models.py face_pipeline.py face_tracker.py scripts tests/face_service`를 실행한다. 사용자 제공 multipart API(`/api/v1/face/registration`, `/api/v1/face/detect`)의 상태 코드·응답과 내부 계약을 합성 테스트로 확인한다. 실제 모델·카메라 실측은 별도 보안 환경에서 수행하며 합성 테스트 통과를 운영 정확도 증거로 보지 않는다.
 실제 카메라 성능 목표·오인식 기준은 AI 담당자가 장비와 모델 실측 후 기록한다.
 
 ## 수용 시나리오 상태
@@ -48,7 +48,7 @@ REQ 연결의 완전성은 파일 내 정의된 REQ를 기준으로 한다. 인�
 
 ## 현재 실행 범위
 
-하네스 파일·검사기와 수용 시나리오만 생성했다. 서비스 코드는 미구현이다.
+하네스와 저장소 루트 얼굴 추론 서비스의 단위/API 골격이 생성됐다. 실제 학생 데이터, Spring 연동, 브라우저 카메라, 실기기 정확도와 오프라인 추론은 아직 검증하지 않았다.
 현재 Codex 작업에 새 지침과 스킬 3개가 검색된 것을 확인했다.
 Claude 실행·두 도구의 별도 새 세션 작업, GitHub Actions 원격 실행, DataGSM, 카메라, GSM SV 배포는 로컬 하네스 검사 대상이 아니다.
 마지막 로컬 검사 결과는 [개발 계획](plans/implementation.md)에 남긴다.

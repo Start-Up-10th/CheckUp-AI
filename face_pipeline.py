@@ -40,6 +40,8 @@ def quality_issues(observation: FaceObservation) -> list[str]:
         issues.append("BLUR")
     if observation.bbox[2] < 0.08 or observation.bbox[3] < 0.08:
         issues.append("FACE_TOO_SMALL")
+    if observation.pose_bucket == "extreme":
+        issues.append("POSE")
     return issues
 
 

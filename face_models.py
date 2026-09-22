@@ -95,7 +95,12 @@ class InferenceModels:
             sharpness = float(cv2.Laplacian(crop, cv2.CV_64F).var()) if crop.size else 0.0
             observations.append(
                 FaceObservation(
-                    bbox, tuple(map(tuple, five)), embedding, brightness, sharpness, "frontal"
+                    bbox,
+                    tuple(map(tuple, five)),
+                    embedding,
+                    brightness,
+                    sharpness,
+                    _pose_bucket(five),
                 )
             )
             aligned.fill(0)
@@ -130,3 +135,14 @@ def _align_face(image: np.ndarray, landmarks: np.ndarray) -> np.ndarray:
     if matrix is None:
         raise ValueError("unable to align face landmarks")
     return cv2.warpAffine(image, matrix, (128, 128), flags=cv2.INTER_LINEAR)
+
+
+def _pose_bucket(landmarks: np.ndarray) -> str:
+    eye_midpoint = (landmarks[0] + landmarks[1]) / 2.0
+    eye_width = max(float(np.linalg.norm(landmarks[1] - landmarks[0])), 1.0)
+    yaw_proxy = abs(float(landmarks[2][0] - eye_midpoint[0])) / eye_width
+    if yaw_proxy > 0.35:
+        return "extreme"
+    if yaw_proxy > 0.18:
+        return "turned"
+    return "frontal"
