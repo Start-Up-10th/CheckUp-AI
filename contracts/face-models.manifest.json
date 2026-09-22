@@ -1,0 +1,14 @@
+{
+  "files": [
+    {
+      "filename": "face-reidentification-retail-0095.xml",
+      "url": "https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/face-reidentification-retail-0095/FP32/face-reidentification-retail-0095.xml",
+      "sha256": "d5adadadf98f45459bf740b0d5cb425b029ef81133280d3b4f9d0ba0d565b8e21b834c3d030448b8926d849340a8ca7a7"
+    },
+    {
+      "filename": "face-reidentification-retail-0095.bin",
+      "url": "https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/face-reidentification-retail-0095/FP32/face-reidentification-retail-0095.bin",
+      "sha256": "953bb75f16d4e7faa0a19700871e6107726cb83e0e062215a841848335694a1e274c61efacab81b4d240d935fe30efda"
+    }
+  ]
+}

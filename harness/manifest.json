@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "requiredFiles": [
+    "README.md", "AGENTS.md", "CLAUDE.md", "package.json", ".gitignore",
+    ".codex/config.toml", ".codex/README.md", ".claude/settings.json", ".claude/README.md",
+    "docs/spec/index.md", "docs/spec/scope.md", "docs/spec/identity.md", "docs/spec/face.md",
+    "docs/spec/attendance.md", "docs/spec/screens.md", "docs/spec/community.md", "docs/spec/operations.md",
+    "docs/architecture.md", "docs/decisions.md", "docs/workflow.md", "docs/verification.md",
+    "docs/plans/implementation.md", "docs/sources/README.md", "docs/sources/interview-decisions.md",
+    "docs/sources/qr-face.md", "docs/sources/gsm-sv.md", "docs/sources/student-ui.txt", "docs/sources/admin-ui.txt",
+    "docs/sources/admin-home.png", "docs/sources/room-dialog.png", "docs/sources/camera-page.png", "docs/sources/camera-fullscreen.png",
+    "contracts/README.md", "web/AGENTS.md", "web/CLAUDE.md", "server/AGENTS.md", "server/CLAUDE.md",
+    "ai/AGENTS.md", "ai/CLAUDE.md", "infra/AGENTS.md", "infra/CLAUDE.md", "infra/.env.example",
+    "tests/acceptance/README.md", "tests/acceptance/scenarios.json",
+    "harness/check.mjs", "harness/check.test.mjs", "harness/hooks.mjs", "harness/hooks.test.mjs", "harness/sync-skills.mjs",
+    ".codex/hooks.json", ".github/workflows/harness.yml"
+  ],
+  "skills": ["dorm-implement", "dorm-verify", "dorm-spec-update", "dorm-docker"],
+  "scopes": ["web", "server", "ai", "infra"]
+}

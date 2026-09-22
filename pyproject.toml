@@ -1,0 +1,35 @@
+[project]
+name = "dorm-face-service"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi==0.115.12",
+  "uvicorn[standard]==0.34.0",
+  "numpy==1.26.4",
+  "opencv-python-headless==4.11.0.86",
+  "av==16.1.0",
+  "mediapipe==0.10.21",
+  "openvino==2026.3.1",
+  "pydantic-settings==2.8.1",
+]
+
+[dependency-groups]
+dev = [
+  "httpx==0.28.1",
+  "pytest==8.3.5",
+  "pytest-cov==6.1.1",
+  "pyyaml==6.0.2",
+  "ruff==0.11.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/face_service"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]

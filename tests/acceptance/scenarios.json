@@ -1,0 +1,651 @@
+{
+  "schemaVersion": 1,
+  "description": "제품 수용 시나리오. 현재는 명세이며 실행된 제품 테스트가 아님.",
+  "scenarios": [
+    {
+      "id": "ACC-SCOPE-001",
+      "requirements": [
+        "REQ-SCOPE-001"
+      ],
+      "title": "웹·운영 규모",
+      "given": "학생 약 200명과 관리자, 출입구 3개",
+      "when": "지원 환경을 구성하고 흐름을 점검한다",
+      "then": [
+        "웹으로 사용하며 출입구당 내장 카메라 기기 1대를 전제로 한다",
+        "관리자가 현장에 있고 별도 무인 키오스크 계정을 만들지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-SCOPE-002",
+      "requirements": [
+        "REQ-SCOPE-002"
+      ],
+      "title": "스택·담당 경계",
+      "given": "프로젝트 최초 구현",
+      "when": "실행 구성과 의존성을 검토한다",
+      "then": [
+        "Next.js/TS/Tailwind, Java/Spring/PostgreSQL/Redis, FastAPI/MediaPipe를 사용한다",
+        "Docker/GitHub Actions/GSM SV 구성과 기술 결정 근거가 남는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-SCOPE-003",
+      "requirements": [
+        "REQ-SCOPE-003"
+      ],
+      "title": "제외 기능 회귀",
+      "given": "과거 화면 원문에 삭제 기능이 남아 있다",
+      "when": "메뉴·라우트·데이터 모델을 대조한다",
+      "then": [
+        "QR 이력·층별 QR·지각 신청·고정 시간표·침대/정원·공실·재등록·만료 임박 알림이 추가되지 않는다",
+        "최초 등록 중 재촬영은 재등록 금지와 구분한다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-AUTH-001",
+      "requirements": [
+        "REQ-AUTH-001"
+      ],
+      "title": "OAuth 로그인과 QR 복귀",
+      "given": "개발용 OAuth 구성과 로그인하지 않은 학생",
+      "when": "정상/실패/위조 state로 콜백하고 QR에서 로그인한다",
+      "then": [
+        "제공된 endpoint와 callback 설정을 사용하며 임의 학교 API를 호출하지 않는다",
+        "위조 state/콜백은 거부하고 정상 QR 로그인은 원래 용도로 이어간다",
+        "실제 연동과 mock 상태가 명시된다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-AUTH-002",
+      "requirements": [
+        "REQ-AUTH-002"
+      ],
+      "title": "학교 명단·호실 매핑",
+      "given": "실제 userinfo와 전체 명단 접근 권한",
+      "when": "학생/호실 데이터를 동기화한다",
+      "then": [
+        "필드 타입·studentId 의미를 실응답으로 확인한다",
+        "301은 3층이며 명단 인원으로 분모를 계산한다",
+        "userinfo에 없는 전체 명단/졸업 상태를 있다고 가정하지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-AUTH-003",
+      "requirements": [
+        "REQ-AUTH-003"
+      ],
+      "title": "역할·데이터 범위",
+      "given": "사감/자치위원/학생/미로그인 세션",
+      "when": "관리자 API와 타인 봉사/다른 호실 정보를 요청한다",
+      "then": [
+        "사감과 자치위원 권한은 같다",
+        "학생과 비로그인은 관리자 변경·벡터 조회를 거부당한다",
+        "학생은 허용된 본인/본인 호실 범위만 조회한다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-AUTH-004",
+      "requirements": [
+        "REQ-AUTH-004"
+      ],
+      "title": "필수 동의",
+      "given": "최초 로그인 학생과 이미 등록한 학생",
+      "when": "동의를 각각 켜고 끄며 다시 로그인한다",
+      "then": [
+        "필수 2개 미동의면 진행할 수 없고 선택 공지 수신은 기본 해제다",
+        "전체 동의와 개별 해제가 일치한다",
+        "선택 알림 미동의여도 등록 가능하고 완료한 등록을 매 로그인 반복하지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-AUTH-005",
+      "requirements": [
+        "REQ-AUTH-005"
+      ],
+      "title": "프로필·로그아웃",
+      "given": "새 계정과 관리자 인증 세션",
+      "when": "프로필 표시와 로그아웃을 수행한다",
+      "then": [
+        "프로필은 비어 있고 얼굴 프레임을 자동 사용하지 않는다",
+        "학생은 추후 별도 원하는 사진을 설정할 수 있다",
+        "확인 모달 없이 로그인 세션·운영 세션을 정리한다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-FACE-001",
+      "requirements": [
+        "REQ-FACE-001"
+      ],
+      "title": "휴대폰 등록·초기화",
+      "given": "모바일/노트북과 저조도/얼굴 없음 촬영",
+      "when": "등록을 촬영·초기화·저장한다",
+      "then": [
+        "모바일만 촬영하고 노트북은 지정 안내를 표시한다",
+        "약 100프레임 품질을 검사하며 저품질을 숫자 채우기에 쓰지 않는다",
+        "초기화는 미저장 촬영본을 버리고 저장 완료 후 홈으로 간다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-FACE-002",
+      "requirements": [
+        "REQ-FACE-002"
+      ],
+      "title": "20벡터·원본 폐기",
+      "given": "정상/실패/취소되는 등록 처리",
+      "when": "DB·로그·임시 저장소·백업을 검사한다",
+      "then": [
+        "학생별 약 20개 대표 벡터와 모델 버전을 저장한다",
+        "원본 영상/프레임은 성공·실패·취소 후 남지 않는다",
+        "랜드마크만으로 신원 비교가 완료됐다고 하지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-FACE-003",
+      "requirements": [
+        "REQ-FACE-003"
+      ],
+      "title": "졸업·퇴사 삭제",
+      "given": "3학년 재학생과 확인된 졸업/전학/퇴사 대상",
+      "when": "수명 정리 및 백업 복원을 수행한다",
+      "then": [
+        "3학년이란 이유만으로 즉시 삭제하지 않는다",
+        "대상 벡터와 사본이 삭제되고 복원해도 되살아나지 않는다",
+        "학교 API 실패/누락만으로 삭제하지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-FACE-004",
+      "requirements": [
+        "REQ-FACE-004"
+      ],
+      "title": "카메라 페이지 수명",
+      "given": "관리자 두 기기와 권한 미허용 브라우저",
+      "when": "진입·이탈·목적 전환·권한 거부를 실행한다",
+      "then": [
+        "진입 시 권한이 허용되면 자동 시작하고 이탈 시 track/전송을 정리한다",
+        "다른 기기의 세션은 유지한다",
+        "미허용인데 LIVE나 성공을 표시하지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-FACE-005",
+      "requirements": [
+        "REQ-FACE-005"
+      ],
+      "title": "여러 얼굴·미등록",
+      "given": "등록자 둘과 미등록 얼굴이 같은 화면에 있다",
+      "when": "동시에 인식하고 중복 통과시킨다",
+      "then": [
+        "얼굴별 성공/실패가 분리되고 unknown에 학생 이름을 붙이지 않는다",
+        "성공 기록·알림이 중복되지 않는다",
+        "실패가 기존 출석을 지우지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-FACE-006",
+      "requirements": [
+        "REQ-FACE-006"
+      ],
+      "title": "실패 안내 경계",
+      "given": "같은 트랙의 연속 시도와 다른 얼굴 트랙",
+      "when": "실패 1·2·3·4회와 성공 후 재시도를 한다",
+      "then": [
+        "4번째 연속 실패부터 지정 QR 안내가 뜬다",
+        "영상 프레임을 각각 실패로 세지 않는다",
+        "트랙 간 횟수가 섞이지 않고 성공/이탈 때 정리된다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-FACE-007",
+      "requirements": [
+        "REQ-FACE-007"
+      ],
+      "title": "인식 UI·전체화면",
+      "given": "정상 카메라·성공/실패/빈 최근 목록",
+      "when": "전체화면 진입/복귀와 인식을 한다",
+      "then": [
+        "LIVE·대기 안내·성공 학번 이름과 최신순 목록이 표시된다",
+        "전체화면 전환만으로 세션을 새로 만들거나 끝내지 않는다",
+        "미식별 실패는 이름 없이 실패/시각을 보여준다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-FACE-008",
+      "requirements": [
+        "REQ-FACE-008"
+      ],
+      "title": "오프라인 추론·동기화",
+      "given": "실제 로컬 모델과 인증된 관리자 캐시",
+      "when": "서버 연결을 끊고 인식 후 복구하며 08시를 지난다",
+      "then": [
+        "벡터 캐시만이 아니라 모델 실행으로 실제 오프라인 추론을 입증한다",
+        "중복은 가장 이른 유효 발생 기록을 인정한다",
+        "폐기된 운영일 임시 기록은 업로드해도 부활하지 않는다",
+        "학생 웹에는 전체 벡터를 배포하지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-ATT-001",
+      "requirements": [
+        "REQ-ATT-001"
+      ],
+      "title": "용도·세션 독립",
+      "given": "동일 학생의 자습실/기숙사 세션",
+      "when": "두 용도로 인증하고 한쪽 페이지를 닫는다",
+      "then": [
+        "용도별 상태를 따로 관리한다",
+        "고정 시간표 없이 활성 페이지 동안 인증한다",
+        "다른 페이지의 활성 세션은 영향을 받지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-ATT-002",
+      "requirements": [
+        "REQ-ATT-002"
+      ],
+      "title": "동시 중복",
+      "given": "얼굴·QR·3개 기기의 같은 학생 인증",
+      "when": "동시 요청/재시도/지연 기록을 보낸다",
+      "then": [
+        "학생+용도+운영일 상태는 하나다",
+        "가장 이른 유효 인증을 인정하며 출석 알림을 중복 생성하지 않는다",
+        "위조 studentId/success는 거부한다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-ATT-003",
+      "requirements": [
+        "REQ-ATT-003"
+      ],
+      "title": "QR 세션 분리",
+      "given": "두 관리자와 각각 여러 탭",
+      "when": "새 진입·새로고침·탭 이탈·강제 종료·목적 전환을 한다",
+      "then": [
+        "진입마다 새 독립 QR이 생기며 한 페이지 종료가 다른 QR을 끝내지 않는다",
+        "층 분리/발급 이력/수동 생성·종료 버튼이 없다",
+        "강제 종료는 서버 lease로 유효 상태가 끝난다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-ATT-004",
+      "requirements": [
+        "REQ-ATT-004"
+      ],
+      "title": "15분 만료·갱신 장애",
+      "given": "QR 토큰과 제어 가능한 서버 clock",
+      "when": "갱신 성공/실패 및 15분 경계를 지난다",
+      "then": [
+        "카운트다운과 지정 메시지가 일치한다",
+        "새 QR 발급 후 이전 QR은 만료된다",
+        "갱신 실패 때 기존 표시를 유지해도 원래 만료를 연장하지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-ATT-005",
+      "requirements": [
+        "REQ-ATT-005"
+      ],
+      "title": "QR 학생 진입",
+      "given": "기본 카메라/웹 QR 카메라, 미로그인 학생",
+      "when": "성공·중복·만료·닫힌 QR을 스캔한다",
+      "then": [
+        "로그인 후 원래 QR을 재검사하고 성공 시 홈으로 간다",
+        "성공·중복·만료·미운영의 지정 문구를 구분한다",
+        "GPS 제한이나 필수 등록 우회가 없다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-ATT-006",
+      "requirements": [
+        "REQ-ATT-006"
+      ],
+      "title": "수동 수정과 늦은 이벤트",
+      "given": "관리자가 호실 학생 출석을 변경한다",
+      "when": "저장/취소 후 과거 오프라인 이벤트와 새 인증을 보낸다",
+      "then": [
+        "취소는 무변경, 저장은 카드/통계 즉시 갱신이다",
+        "과거 이벤트는 수정 상태를 덮지 않지만 이후 새 유효 인증은 출석으로 바꾼다",
+        "사유/이력/되돌리기 UI가 없다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-ATT-007",
+      "requirements": [
+        "REQ-ATT-007"
+      ],
+      "title": "일일 폐기 경계",
+      "given": "07:59:59 KST의 활성 화면과 전날 기록",
+      "when": "08:00 도달·서버 재시작·늦은 업로드를 한다",
+      "then": [
+        "당일 기록과 출석 알림을 정리하고 운영일을 새로 적용한다",
+        "전날 QR과 폐기 이벤트가 새날 출석으로 재활용되지 않는다",
+        "벡터·학생·공지·봉사 누적은 유지한다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-UI-001",
+      "requirements": [
+        "REQ-UI-001"
+      ],
+      "title": "관리자 전개도",
+      "given": "3·4·5층에 2명/3명/4명 배정 호실",
+      "when": "층 전환과 출석 변경을 한다",
+      "then": [
+        "방 번호순 카드와 선택층 출석/미출석 통계를 표시한다",
+        "인원 분모는 DataGSM 배정 수이며 4로 고정하지 않는다",
+        "공실 메뉴/범례가 없고 전원/일부 출석 색상이 구별된다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-UI-002",
+      "requirements": [
+        "REQ-UI-002"
+      ],
+      "title": "호실 상세",
+      "given": "이름순 정렬과 동명이인 학생",
+      "when": "관리자/학생으로 상세를 연다",
+      "then": [
+        "이름순·안정 순번이며 침대번호/정원 데이터를 요구하지 않는다",
+        "관리자만 출석/미출석 선택 후 저장한다",
+        "학생에게는 읽기 전용이다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-UI-003",
+      "requirements": [
+        "REQ-UI-003"
+      ],
+      "title": "학생 홈 범위",
+      "given": "등록 학생과 룸메이트, 다른 호실",
+      "when": "본인 홈과 다른 방 정보를 요청한다",
+      "then": [
+        "본인 호실을 읽기 전용 표시하고 이름/학번/층을 보여준다",
+        "다른 층 전체 학생 화면으로 임의 확장하지 않는다",
+        "QR·마이·알림 진입과 서버 실패 문구가 있다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-UI-004",
+      "requirements": [
+        "REQ-UI-004"
+      ],
+      "title": "학생 반응형",
+      "given": "모바일/노트북 학생 페이지",
+      "when": "홈·마이·QR·봉사·알림으로 이동한다",
+      "then": [
+        "모바일 홈/마이 탭, 하위 화면 뒤로가기·탭 숨김이 동작한다",
+        "노트북 사이드바와 호실 정보가 표시된다",
+        "학생 출석 과거 이력 메뉴가 없다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-UI-005",
+      "requirements": [
+        "REQ-UI-005"
+      ],
+      "title": "관리자 반응형",
+      "given": "컴퓨터·패드·휴대폰",
+      "when": "각 메뉴와 전체화면·공지·로그아웃 접근을 확인한다",
+      "then": [
+        "사이드바·레일·4탭이 화면에 맞게 표시된다",
+        "카메라 전체화면은 있고 QR 전체화면은 없다",
+        "새 공지 관리와 휴대폰 로그아웃도 접근 가능하다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-UI-006",
+      "requirements": [
+        "REQ-UI-006"
+      ],
+      "title": "공통 상태",
+      "given": "로딩/빈 결과/오류/미로그인 API 응답",
+      "when": "목록·홈·로그인을 표시한다",
+      "then": [
+        "본문 상태만 바뀌며 헤더/내비게이션은 유지된다",
+        "지정 문구와 다시 시도/로그인 동작을 제공한다",
+        "미정의 문구를 이유로 서버 예외 검증을 생략하지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-COM-001",
+      "requirements": [
+        "REQ-COM-001"
+      ],
+      "title": "봉사 명단",
+      "given": "전체 학생과 기존 봉사 누적",
+      "when": "검색·추가·중복·제외 취소/확정·재추가를 한다",
+      "then": [
+        "이름/학번 검색과 버튼 상태가 일치한다",
+        "제외 확인에 대상 정보와 누적 유지 안내가 있다",
+        "소속만 제거하며 누적 횟수를 초기화하지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-COM-002",
+      "requirements": [
+        "REQ-COM-002"
+      ],
+      "title": "봉사 +1",
+      "given": "명단의 0회 학생",
+      "when": "새 클릭 두 번과 첫 클릭의 네트워크 재시도를 보낸다",
+      "then": [
+        "새 두 클릭은 2회, 재전송은 추가 적립하지 않는다",
+        "날짜는 기록하고 활동명은 비운다",
+        "감소/취소·미정의 통계 UI가 없다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-COM-003",
+      "requirements": [
+        "REQ-COM-003"
+      ],
+      "title": "학생 봉사 횟수",
+      "given": "본인과 타인의 봉사 누적",
+      "when": "마이페이지 조회와 08시 경계를 지난다",
+      "then": [
+        "본인 누적 횟수만 볼 수 있다",
+        "타인 조회/수정과 활동 상세 목록은 제공하지 않는다",
+        "누적은 일일 초기화 후에도 유지된다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-COM-004",
+      "requirements": [
+        "REQ-COM-004"
+      ],
+      "title": "공지 권한·선택 동의",
+      "given": "동의/미동의 학생과 관리자",
+      "when": "공지 작성·수정·삭제·조회한다",
+      "then": [
+        "관리자만 변경하고 학생은 목록을 읽는다",
+        "알림 동의 여부와 무관하게 공지 목록은 조회 가능하다",
+        "신규 공지 알림은 선택 동의 학생에게만 생성된다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-COM-005",
+      "requirements": [
+        "REQ-COM-005"
+      ],
+      "title": "내부 알림",
+      "given": "출석·봉사 적립·새 공지와 중복 인증",
+      "when": "알림 목록 진입과 다시 인증을 한다",
+      "then": [
+        "3개 유형만 존재하고 재등록/만료 임박/푸시는 없다",
+        "중복 인증으로 알림을 늘리지 않는다",
+        "모바일 점/노트북 강조가 읽음 처리 후 사라지고 최신순·상대 시각을 표시한다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-OPS-001",
+      "requirements": [
+        "REQ-OPS-001"
+      ],
+      "title": "GSM SV 운영 조건",
+      "given": "학교 VM의 실제 권한·포워딩 주소",
+      "when": "운영 배포 준비를 검토한다",
+      "then": [
+        "Ubuntu22.04와 프로젝트 계정의 만료 없음이 실제 확인된다",
+        "상위 도메인을 완성된 HTTPS 주소로 가정하지 않는다",
+        "VM/포트/GPU 자원이 확인 근거와 함께 기록된다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-OPS-002",
+      "requirements": [
+        "REQ-OPS-002"
+      ],
+      "title": "배포·비밀값",
+      "given": "Docker/Actions와 비공개 운영 설정",
+      "when": "빌드 결과·CI·배포 구성을 검사한다",
+      "then": [
+        "OAuth Secret/SSH/DB 자격증명이 Git·프론트 번들·로그에 없다",
+        "실제 callback·TLS를 연동 단계에서 채운다",
+        "하네스 CI만 통과했다고 운영 배포 완료로 보고하지 않는다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-OPS-003",
+      "requirements": [
+        "REQ-OPS-003"
+      ],
+      "title": "영속·백업·복원",
+      "given": "학생·벡터·설정과 당일 기록·삭제 대상",
+      "when": "재시작·암호화 백업·복원을 한다",
+      "then": [
+        "영속 데이터가 재시작 후 유지된다",
+        "원본 얼굴과 당일 출석이 백업에 포함되지 않는다",
+        "삭제 대상 벡터가 복원 후 재생성되지 않는다",
+        "백업 위치/기간/공지·봉사 범위를 담당자가 기록한다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    },
+    {
+      "id": "ACC-OPS-004",
+      "requirements": [
+        "REQ-OPS-004"
+      ],
+      "title": "다른 데이터 수명",
+      "given": "모든 데이터 종류와 정리 작업",
+      "when": "08시·졸업/퇴사·오류 후 정리를 반복한다",
+      "then": [
+        "원본·당일 기록·벡터·누적 정보별 수명을 지킨다",
+        "중복 정리가 안전하고 DB/캐시/기기/백업의 누락이 없다",
+        "학교 문안/운영 보관정책과 구현이 일치한다"
+      ],
+      "status": "specified",
+      "implementation": [],
+      "evidence": []
+    }
+  ]
+}

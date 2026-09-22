@@ -1,0 +1,53 @@
+openapi: 3.1.0
+info:
+  title: Dormitory Face Inference Service
+  version: 0.1.0
+paths:
+  /health/live:
+    get:
+      responses:
+        '200': {description: live}
+  /health/ready:
+    get:
+      responses:
+        '200': {description: ready}
+        '503': {description: model or calibration unavailable}
+  /internal/v1/face/enrollments/extract:
+    post:
+      security: [{serviceBearer: []}]
+      requestBody:
+        required: true
+        content:
+          video/webm: {schema: {type: string, format: binary}}
+          video/mp4: {schema: {type: string, format: binary}}
+      responses:
+        '200': {description: representative vectors}
+        '422': {description: quality or media error}
+  /internal/v1/face/sessions/{sessionId}:
+    put:
+      security: [{serviceBearer: []}]
+      parameters: [{name: sessionId, in: path, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SessionPayload'}}}}
+      responses: {'200': {description: session ready}}
+    delete:
+      security: [{serviceBearer: []}]
+      parameters: [{name: sessionId, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: session deleted}}
+  /internal/v1/face/sessions/{sessionId}/frames:
+    post:
+      security: [{serviceBearer: []}]
+      parameters:
+        - {name: sessionId, in: path, required: true, schema: {type: string}}
+        - {name: X-Frame-Id, in: header, required: false, schema: {type: string}}
+      requestBody: {required: true, content: {image/jpeg: {schema: {type: string, format: binary}}, image/webp: {schema: {type: string, format: binary}}}}
+      responses: {'200': {description: per-face results}}
+components:
+  securitySchemes:
+    serviceBearer: {type: http, scheme: bearer}
+  schemas:
+    SessionPayload:
+      type: object
+      required: [model, candidates]
+      properties:
+        model: {type: object}
+        candidates: {type: array, items: {type: object}}
