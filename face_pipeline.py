@@ -29,7 +29,7 @@ def normalize_vector(vector: Iterable[float], dimension: int = EMBEDDING_DIMENSI
     norm = float(np.linalg.norm(array))
     if norm == 0:
         raise FaceServiceError("MODEL_MISMATCH", "embedding cannot be zero", 422)
-    return array / norm
+    return (array / norm).astype(np.float32, copy=True)
 
 
 def quality_issues(observation: FaceObservation) -> list[str]:
@@ -48,6 +48,8 @@ def quality_issues(observation: FaceObservation) -> list[str]:
 def select_representatives(
     observations: list[FaceObservation], count: int = 20, consistency_threshold: float = 0.55
 ) -> list[np.ndarray]:
+    """Select diverse vectors for one identity; never merge unrelated faces."""
+
     candidates = [o for o in observations if o.embedding is not None and not quality_issues(o)]
     if len(candidates) < count:
         raise FaceServiceError("INSUFFICIENT_QUALITY_FRAMES", f"need {count} quality observations")
@@ -55,9 +57,7 @@ def select_representatives(
     centroid = normalize_vector(np.mean(vectors, axis=0))
     coherent = vectors @ centroid >= consistency_threshold
     if int(coherent.sum()) < count or not coherent.all():
-        raise FaceServiceError(
-            "MULTIPLE_IDENTITIES", "quality observations do not form one identity"
-        )
+        raise FaceServiceError("MULTIPLE_IDENTITIES", "quality observations do not form one identity")
     vectors = vectors[coherent]
     chosen = [int(np.argmax(vectors @ centroid))]
     while len(chosen) < count:
@@ -65,7 +65,7 @@ def select_representatives(
         score = distances.min(axis=1)
         score[chosen] = -1
         chosen.append(int(np.argmax(score)))
-    return [vectors[index].astype(np.float32) for index in chosen]
+    return [vectors[index].astype(np.float32, copy=True) for index in chosen]
 
 
 def match_embedding(
@@ -75,11 +75,12 @@ def match_embedding(
     margin_threshold: float,
 ) -> Match:
     probe = normalize_vector(probe)
-    scores = []
+    scores: list[tuple[float, str]] = []
     for student_id, vectors in candidates.items():
-        similarities = sorted((float(probe @ normalize_vector(v)) for v in vectors), reverse=True)
-        score = float(np.mean(similarities[:3]))
-        scores.append((score, student_id))
+        similarities = sorted(
+            (float(probe @ normalize_vector(vector)) for vector in vectors), reverse=True
+        )
+        scores.append((float(np.mean(similarities[:3])), student_id))
     if not scores:
         return Match("UNKNOWN", None, None, None)
     scores.sort(reverse=True)
@@ -94,3 +95,11 @@ def match_embedding(
 def validate_model(metadata: ModelMetadata, expected: ModelMetadata) -> None:
     if metadata != expected:
         raise FaceServiceError("MODEL_MISMATCH", "candidate vectors use a different model")
+
+
+def clear_observations(observations: Iterable[FaceObservation]) -> None:
+    """Best-effort clearing for request-scoped identity vectors."""
+
+    for observation in observations:
+        if observation.embedding is not None:
+            observation.embedding.fill(0)

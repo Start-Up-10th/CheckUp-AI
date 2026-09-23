@@ -1,7 +1,7 @@
 # 서비스 간 계약
 
 제품 정책은 [명세](../docs/spec/index.md), 기술 경계는 [아키텍처](../docs/architecture.md)를 따른다.
-사용자 제공 API 명세의 공개 호환 경로는 `POST /api/v1/face/registration`과 `GET /api/v1/face/detect`이며, multipart `images`와 Bearer 토큰을 사용한다. 얼굴 추론 내부 계약(`/internal/v1/...`)도 `ai-face.openapi.yaml`에 함께 기록한다. 공개 경로는 출석 DB를 직접 변경하지 않고 메모리 벡터 파이프라인을 통해 결과만 반환한다.
+현재 확정된 공개 API는 DataGSM 사용자가 제공한 엔드포인트뿐이다. 내부 REST 경로와 schema는 아직 없다.
 
 백엔드 첫 기능 구현 시 실제 OpenAPI 계약을 이 폴더에 생성하고 웹/AI 담당자와 공유한다.
 빈 OpenAPI 파일로 계약이 완료됐다고 처리하지 않는다.

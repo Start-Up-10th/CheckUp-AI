@@ -1,6 +1,6 @@
 # 기숙사 출석 관리 · Claude Code / Codex 하네스
 
-약 200명의 기숙사생, 출입구 3곳, 얼굴 인식·QR 출석을 위한 개발 저장소다. 저장소 루트에 FastAPI 얼굴 추론 골격이 있으며 Spring/Next.js 제품 서비스는 단계적으로 구현한다.
+약 200명의 기숙사생, 출입구 3곳, 얼굴 인식·QR 출석을 위한 개발 하네스다. 서비스 구현 전 단계이며 애플리케이션 코드는 아직 없다.
 
 이 저장소에서 Claude Code와 Codex가 같은 요구사항, 개발 절차, 검증 기준을 사용한다. 인터뷰 전체를 매번 프롬프트에 붙이지 않아도 작업을 이어갈 수 있다.
 
@@ -44,9 +44,7 @@ Claude Code는 [CLAUDE.md](CLAUDE.md)에서 공통 지침을 가져온다. Codex
 └── .github/workflows/       하네스 검사 CI
 ```
 
-`ai/`는 AI 작업 지침 폴더로 유지하고, 현재 루트의 `face_api.py`가 실제 FastAPI 얼굴 추론 골격이다. 작동하지 않는 빈 앱·가짜 출석 API는 만들지 않았다.
-
-루트 얼굴 서비스는 Python 3.12와 `uv`를 사용한다. 모델 파일을 준비한 뒤 `FACE_SERVICE_TOKEN`, `FACE_ACCESS_TOKEN`, `FACE_STUDENT_TOKEN_MAP`, `FACE_MATCH_THRESHOLD`, `FACE_MATCH_MARGIN`을 환경변수로 설정하고 `uv run uvicorn face_api:app`으로 실행한다. 공개 호환 API는 `POST /api/v1/face/registration` 및 `GET /api/v1/face/detect`이며 multipart `images`를 받는다. `FACE_STUDENT_TOKEN_MAP`은 백엔드가 제공하는 `{accessToken: studentId}` 매핑이고, 서비스는 이를 출석 DB 대신 사용하지 않으며 메모리 등록 벡터만 보관한다. threshold/margin이 없거나 실측되지 않은 값이면 readiness가 실패한다.
+각 서비스 폴더는 향후 코드 위치다. 현재 들어 있는 파일은 담당 지침이며, 작동하는 서비스를 가장한 빈 앱·가짜 API는 만들지 않았다.
 
 ## 공통 스킬
 
@@ -68,5 +66,7 @@ Claude Code는 [CLAUDE.md](CLAUDE.md)에서 공통 지침을 가져온다. Codex
 - 개발자가 판단할 기술 항목: [docs/decisions.md](docs/decisions.md)
 - 사용자가 다시 정할 필요 없는 개발 순서: [docs/plans/implementation.md](docs/plans/implementation.md)
 - 검증 범위·명령: [docs/verification.md](docs/verification.md)
+- 하네스 평가·재현 근거: [2026-09-23 평가](docs/reviews/harness-assessment-2026-09-23.md)
+- 하네스 개선 순서·완료 기준: [개선 계획](docs/plans/harness-improvements.md)
 
 GitHub 저장소 생성·커밋·푸시·실제 배포는 수행하지 않았다. 운영 OAuth 값과 서버 접속 정보는 연동 단계에서 제공한다.

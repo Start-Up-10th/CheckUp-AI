@@ -1,6 +1,6 @@
 # 개발 아키텍처
 
-저장소 루트에 FastAPI 얼굴 추론 서비스의 최소 실행 골격이 추가됐다. Spring·Next.js·운영 인프라는 아직 별도 구현 대상이다.
+현재는 하네스만 구축됐다. 아래 서비스 경계는 구현을 위한 설계 기준이며 실행 중인 인프라 설명이 아니다.
 
 ## 경계
 
@@ -22,7 +22,7 @@ Spring API ── DataGSM OAuth / 확인된 학교 데이터 API
 
 200명 규모와 공유 출석 정책을 고려해 한 저장소에 web/server/ai/infra를 둔다.
 Spring 안에서 출석·공지·봉사 도메인을 모듈로 구분하고 이를 별도 마이크로서비스로 미리 쪼개지 않는다.
-AI는 Python 실행 환경 때문에 분리하되 DB의 권위 있는 출석 상태는 Spring이 관리한다. 현재 AI 코드는 루트의 `face_api.py`와 관련 모듈에 있으며 `ai/` 지침 폴더는 변경하지 않는다. 사용자 제공 API 호환 경로(`/api/v1/face/registration`, `/api/v1/face/detect`)는 multipart `images` 어댑터로 제공하고, 내부 Spring↔FastAPI 벡터 계약은 `/internal/v1/...`에 둔다.
+AI는 Python 실행 환경 때문에 분리하되 DB의 권위 있는 출석 상태는 Spring이 관리한다.
 Claude와 Codex의 차이는 진입 파일/스킬 검색 경로에 한정한다. 제품 정책은 docs/spec 하나로 유지한다.
 
 ## 공통 도메인 개념
@@ -44,7 +44,7 @@ Claude와 Codex의 차이는 진입 파일/스킬 검색 경로에 한정한다.
 ## 구현 전 기술 확인
 
 1. DataGSM의 실제 userinfo 구조, 전체 학생 명단 경로, 기숙사 퇴사/졸업 신호.
-2. MediaPipe 이후 학생 신원을 비교할 임베딩 모델·라이선스·정확도·실장 성능. 구현 기준 모델과 계약은 `contracts/ai-face.openapi.yaml` 및 DEC-003에 기록한다.
+2. MediaPipe 이후 학생 신원을 비교할 임베딩 모델·라이선스·정확도·실장 성능.
 3. 웹 오프라인 추론·벡터 캐시·기기 시계 보정의 실행 가능성.
 4. GSM SV 실제 서비스 주소·TLS·기기에서의 접속 경로·운영 VM 만료 여부.
 

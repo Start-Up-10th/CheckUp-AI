@@ -1,47 +1,84 @@
-# 개발 계획과 인계
+# 개발 계획과 인계 — API 기능 기준
 
 ## 현재 상태
 
-- 하네스와 저장소 루트 FastAPI 얼굴 추론 서비스 골격이 구성됐다. web/server 제품 앱은 아직 없다.
-- 사용자 제품 인터뷰의 최신 결정을 docs/spec으로 정리했다.
-- Claude/Codex 공통 지침·영역 지침·스킬·문서 검사·CI 구성을 완료했다.
-- 외부 비밀값 없이 시작 가능하며 실제 연동이 필요한 곳은 분리한다.
+- 하네스와 제품 명세 정리는 완료됐다.
+- 제품 웹·Spring·FastAPI·운영 서비스와 실제 API 구현은 아직 시작하지 않았다.
+- `API명세서/API명세서`의 API 문서는 모두 `시작 전`이다.
+- 계획은 API 그룹별 파일로 나누고, 파일명은 기능을 설명하는 이름으로 정한다.
 
-## 진행 순서
+## 하네스 개선과 CI 선구축
 
-- [x] H0 하네스: 명세·출처·두 도구 지침·스킬 동기화·수용 시나리오·로컬 검사 완료.
-- [x] H0.1 안전 훅: Claude/Codex secret·위험 명령 차단과 하네스 변경 후 검사 안내 추가.
-- [ ] P1 기반: web/server 실행 골격, 버전 고정, DB migration, mock DataGSM, 공통 API 오류/시간 규약.
-- [ ] P2 첫 기능: 학생/관리자 로그인·권한·동의, 호실 그룹·관리자 전개도·수동 출석, 일일 초기화. 실제 DataGSM 응답/전체 명단 경로 확인 병행.
-- [ ] P3 QR: 독립 세션, heartbeat 종료, 15분 교체·만료, 로그인 복귀, 중복·운영일·동시 기기 검증.
-- [~] P4 얼굴 등록/인식: 루트 FastAPI에서 MediaPipe 검출/랜드마크와 OpenVINO 256차원 임베딩, 영상→약 100프레임→대표 벡터 20개, 원본 폐기, 얼굴별 결과·트랙 실패 카운터를 구현했다. 사용자 제공 multipart `/api/v1/face/registration`·`/api/v1/face/detect` 호환 경로와 내부 벡터 계약을 함께 제공한다. 웹 카메라·Spring 출석 반영·실학생 정확도는 남아 있다.
-- [ ] P5 장애/수명: 웹 오프라인 추론 가능성 실증, 지연 동기화·수동 수정 충돌, 벡터 대상 삭제·백업 복원 검증.
-- [ ] P6 커뮤니티: 봉사 명단·+1·학생 누적 횟수, 공지 CRUD·선택 알림·내부 알림.
-- [ ] P7 배포: 실제 GSM SV 접속·TLS·PROJECT_OWNER, 운영 OAuth, Compose·Actions·health·백업/롤백, 실기기 수용 검증.
+초기 하네스 정리 이후의 결함과 개선 과제는 [2026-09-23 평가](../reviews/harness-assessment-2026-09-23.md) 및 [하네스 개선 계획](harness-improvements.md)에서 관리한다.
+CI/CD 구성·정적 검사는 서비스 개발 전에 준비할 수 있고, 테스트·빌드는 실행 가능한 골격·명령부터 연결한다(DEC-013).
+이 작업 흐름은 아래 제품 API 개발과 병행할 수 있다. 하네스 개선 전체 완료를 제품 개발의 새 선행 조건으로 만들지 않는다.
 
-P1~P7은 개발 실행 시 채운다. H0 완료가 P1 이후의 사용자 승인이나 구현 완료를 의미하지 않는다.
-독립 UI/도메인 작업은 OAuth 값 또는 VM 발급을 기다리지 않고 진행한다.
+## API 그룹별 계획
+
+| API 그룹 | 계획 파일 | API 범위 | 담당자 | 상태 |
+| --- | --- | --- | --- | --- |
+| 인증 | [auth.md](auth.md) | `/api/v1/auth/*` | 강민우 | 미착수 |
+| 상태 확인 | [health-check.md](health-check.md) | `/api/v1/health` | 김준수 | 미착수 |
+| 학생·출석 | [student-attendance.md](student-attendance.md) | `/api/v1/student`, `/api/v1/attend` | 김준수 | 미착수 |
+| 호실 명단 | [room-roster.md](room-roster.md) | `/api/v1/room/student` | 임서하 | 미착수 |
+| QR 출석 | [qr-attendance.md](qr-attendance.md) | `/api/v1/qr*` | 김성찬 | 미착수 |
+| 얼굴 인식 | [face-recognition.md](face-recognition.md) | `/api/v1/face/*` | 임서하 | 미착수 |
+| 봉사 관리 | [volunteer-management.md](volunteer-management.md) | `/api/v1/volunteer/*` | 김성찬·강민우 | 미착수 |
+| DataGSM 동기화 | [datagsm-webhook.md](datagsm-webhook.md) | `/api/v1/webhook` | 강민우 | 미착수 |
+
+## 공통 선행 작업
+
+- [ ] 인증 헤더, 사용자 식별자 타입, 공통 오류 envelope, `requestId`를 정한다.
+- [ ] 서버 UTC 시각과 Asia/Seoul 08:00 운영일 계산을 공통화한다.
+- [ ] `student_id`, `studentId`, `studentNumber`, `dormitoryRoom` 매핑을 고정한다.
+- [ ] DB migration, 테스트용 clock, 민감정보 없는 로그·fixture를 준비한다.
+- [ ] 실제 구현 뒤 비어 있지 않은 OpenAPI 계약을 `contracts/`에 생성한다.
+- [ ] 관리자·본인·본인 호실 권한을 서버에서 검증한다.
+
+## 기능 간 의존성
+
+인증과 DataGSM 동기화가 먼저다. 이후 학생·출석, 호실, QR, 얼굴, 봉사 기능을 병렬 진행하고 마지막에 웹·운영·수용 검증을 연결한다.
+
+## API 문서와 제품 명세의 보완 목록
+
+1. QR 발급 문서에 `purpose`, 독립 세션 ID, lease/heartbeat, 종료, 15분 갱신이 없다.
+2. QR 출석 문서에 운영일·중복 결과·현재 사용자 범위가 없다.
+3. 얼굴 감지는 `GET` + `File[]` body이며 단일 `student_id`·`success`만 반환해 다수 얼굴·unknown·점수·모델 정보를 표현하지 못한다.
+4. 얼굴 인식 결과의 출석 확정·오프라인 임시 기록 동기화 API가 없다.
+5. 관리자 호실 수동 출석 저장 API가 없다.
+6. 공지 CRUD·내부 알림 API가 없다.
+7. 호실 API는 단일 호실 조회만 정의해 관리자 층 전개도 전체 조회를 직접 지원하지 않는다.
+8. webhook의 event 값, 서명 방식, old/new 실제 필드, 재전송 idempotency가 미정이다.
+9. 인증 JSON 예시의 쉼표, `RefreshToken` 헤더 규칙, 공통 오류 envelope가 정리되지 않았다.
+10. 봉사 증가·차감 API의 재시도 idempotency와 0회 하한 검증을 구현 계약에 반영한다. UI 노출은 SRC-NOTION-CHECKUPZIP 승인으로 `+ / −` 모두 확정됐다.
+
+없는 경로를 임의로 구현하지 않고, 제공자·소비자·관련 REQ·수용 시나리오를 정한 뒤 `contracts/`에 반영한다.
+
+## 웹·운영 통합
+
+- [ ] OAuth, 학생 홈·마이·QR, 관리자 홈·QR·얼굴·봉사 화면을 각 API와 연결한다.
+- [ ] 로딩·빈 상태·권한 부족·만료·중복·일시 장애를 오류 코드와 분리한다.
+- [ ] 카메라 track·타이머·구독을 이탈/로그아웃 때 정리한다.
+- [ ] Docker Compose, PostgreSQL/Redis 볼륨, health check, secret 주입을 구성한다.
+- [ ] GSM SV 권한·VM 만료·자원·포트/TLS·OAuth callback을 확인한다.
+- [ ] 원본 얼굴·당일 출석·임시 기록을 백업에서 제외하고 삭제 복원을 검사한다.
+
+## 완료 기준
+
+- API 요청·응답·권한·오류가 각 계획과 `contracts/`에 연결된다.
+- 출석은 학생+용도+운영일 DB 원자성과 가장 이른 유효 기록 규칙을 갖는다.
+- 얼굴 원본·프레임·벡터·당일 출석의 수명을 DB·캐시·로그·백업까지 검증한다.
+- 실제 제품 테스트 전에는 수용 시나리오를 `verified`로 표시하지 않는다.
+- 실제 서비스 테스트 후 `npm run harness:check`를 실행한다.
 
 ## 실행 기록
 
 | 시점 | 실행 | 결과 |
 | --- | --- | --- |
-| 하네스 구성 중 | 첨부 사용자·관리자 원문과 최신 정정 대조 | 완료; sources의 출처 지도 참고 |
-| 2026-09-21 | `npm run harness:sync` | 3개 공통 스킬을 Claude 검색 경로에 생성 |
-| 2026-09-21 | `npm run harness:check`, Windows / Node 24.15.0 | REQ 38개·시나리오 38개·공통 스킬 3개·Markdown 38개 검사 통과, 자체 테스트 12/12 통과 |
-| 2026-09-21 | Codex 지침/스킬 발견 | 현재 작업에 루트 AGENTS와 프로젝트 스킬 3개가 실제 제공됨 |
-| 2026-09-21 | Skill Creator의 별도 Python quick_validate 실행 | 번들 환경의 PyYAML 부재로 실행 불가. 이 저장소의 Node frontmatter·이름·링크·동기화 검사는 통과. 별도 설치하지 않음 |
-| 2026-09-21 | Docker 스킬 추가 후 `npm run harness:sync` / `npm run harness:check` | dorm-docker 양쪽 연결, 공통 스킬 4개·Markdown 40개·REQ/시나리오 38개 검사 및 자체 테스트 12/12 통과. Docker 빌드/배포 실행은 범위에 없음 |
-| 2026-09-22 | 루트 얼굴 서비스 구현 | `uv lock`, `uv sync --frozen`, 공식 MediaPipe/OpenVINO 모델 manifest 해시 검증, 합성 벡터·API·트랙 테스트 9/9 통과. 실제 모델 로드·빈 프레임 smoke test 통과; 실학생 정확도·카메라·Spring 연동은 미검증 |
-| 2026-09-21 | Claude/Codex 안전 훅 추가 후 `npm run harness:check` | secret·위험 명령 차단, 명세·스킬 변경 후 검사 안내, 훅 테스트 포함 자체 테스트 20/20 통과. 실제 Claude Code/Codex 세션 훅 실행은 미검증 |
+| 2026-09-21 | `npm run harness:sync` | 공통 스킬 동기화 완료 |
+| 2026-09-21 | `npm run harness:check` | 하네스·명세·스킬 검사 통과, 제품 서비스는 미구현 |
+| 2026-09-22 | API 명세 폴더 대조 | 8개 API 그룹별 기능 계획으로 재편 |
+| 2026-09-23 | CI 선구축 지침 반영·공식 문서/공개 저장소 비교·로컬 진단 | DEC-013 추가, 평가와 개선 계획 작성. 기준 검사 20/20 통과와 별개로 훅 입력/경로 및 검증 증빙의 허점을 재현. 실제 에이전트 새 세션·원격 CI·제품 실행은 미검증. |
+| 2026-09-24 | Notion ZIP 항목 3개 사용자 승인 반영 | 얼굴 자동 촬영, 관리자 휴대폰 5탭, 봉사 횟수 `+ / −`를 출처·명세·수용 시나리오·분야별 계획에 반영. 제품 코드는 미구현. 이번 변경 뒤 자동 검사는 실행하지 않음. |
 
-Claude Code 실제 실행, GitHub Actions 원격 실행, Linux/Node22 실행, 제품 API/카메라/배포는 수행하지 않았다. MediaPipe/OpenVINO 실제 모델은 로컬 CPU에서 로드했지만 실학생 데이터 평가는 수행하지 않았다.
-제품 시나리오는 모두 specified(0/38 verified)다. 다음 단계는 P1이다.
-
-검사 실행 후 실제 명령·결과를 추가한다. 실패는 고친 뒤 재검증하며 검증하지 않은 제품 기능을 완료로 표시하지 않는다.
-
-## 다음 작업의 입력
-
-담당자가 제품 개발을 시작하면 P1에서 실제 도구/버전을 선정한다.
-DataGSM client 설정, 전체 명단 접근, AI 임베딩 모델, 오프라인 실행, 운영 도메인은 decisions에 검증 결과를 남긴다.
-현재 하네스 생성 작업이 끝난 뒤에는 별도 사용자 요청 없이 전체 앱 개발·운영 배포까지 진행하지 않는다.
+현재 변경은 계획 문서뿐이며 제품 API·웹·AI·배포 구현은 수행하지 않았다.
