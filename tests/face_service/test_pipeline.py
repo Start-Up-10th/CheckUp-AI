@@ -51,10 +51,8 @@ def test_model_metadata_mismatch_is_rejected():
 def test_track_failures_are_isolated_and_reset():
     manager = TrackManager()
     tracks = manager.assign([(0, 0, 1, 1), (2, 0, 1, 1)])
-    assert manager.record_failure(tracks[0]) == 1
-    assert manager.record_failure(tracks[0]) == 2
-    assert manager.record_failure(tracks[0]) == 3
-    assert manager.record_failure(tracks[0]) == 4
+    for _ in range(4):
+        assert manager.record_failure(tracks[0]) == _ + 1
     assert tracks[1].failures == 0
     manager.record_success(tracks[0])
     assert tracks[0].failures == 0

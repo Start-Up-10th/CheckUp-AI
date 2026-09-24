@@ -5,63 +5,12 @@ info:
 paths:
   /health/live:
     get:
-      responses:
-        '200': {description: live}
+      responses: {"200": {description: live}}
   /health/ready:
     get:
       responses:
-        '200': {description: ready}
-        '503': {description: model or calibration unavailable}
-  /api/v1/face/registration:
-    post:
-      summary: Register a student's representative face vectors
-      security: [{accessBearer: []}]
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [images]
-              properties:
-                images:
-                  type: array
-                  items: {type: string, format: binary}
-      responses:
-        '201':
-          description: face registration success
-          content: {application/json: {schema: {$ref: '#/components/schemas/SuccessResponse'}}}
-        '400': {description: malformed request or invalid image}
-        '401': {description: missing or invalid access token}
-        '403': {description: student information was not found}
-        '409': {description: face is already registered}
-        '422': {description: face not detected or insufficient registerable data}
-        '500': {description: server internal error}
-  /api/v1/face/detect:
-    get:
-      summary: Detect a registered student face
-      security: [{accessBearer: []}]
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [images]
-              properties:
-                images:
-                  type: array
-                  items: {type: string, format: binary}
-      responses:
-        '201':
-          description: face detection success
-          content: {application/json: {schema: {$ref: '#/components/schemas/DetectResponse'}}}
-        '400': {description: malformed request or invalid image}
-        '401': {description: missing or invalid access token}
-        '403': {description: student information was not found}
-        '409': {description: face is already registered}
-        '422': {description: face not detected or insufficient face data}
-        '500': {description: server internal error}
+        "200": {description: model and calibration ready}
+        "503": {description: model or calibration unavailable}
   /internal/v1/face/enrollments/extract:
     post:
       security: [{serviceBearer: []}]
@@ -71,58 +20,29 @@ paths:
           video/webm: {schema: {type: string, format: binary}}
           video/mp4: {schema: {type: string, format: binary}}
       responses:
-        '200':
-          description: representative vectors
-          content: {application/json: {schema: {$ref: '#/components/schemas/EnrollmentResponse'}}}
-        '422': {description: quality or media error}
-  /internal/v1/face/sessions/{session_id}:
-    put:
-      security: [{serviceBearer: []}]
-      parameters: [{name: session_id, in: path, required: true, schema: {type: string}}]
-      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SessionPayload'}}}}
-      responses: {'200': {description: session ready}}
-    delete:
-      security: [{serviceBearer: []}]
-      parameters: [{name: session_id, in: path, required: true, schema: {type: string}}]
-      responses: {'200': {description: session deleted}}
+        "200":
+          description: 100 sampled frames reviewed and 20 representative vectors returned
+          content: {application/json: {schema: {$ref: "#/components/schemas/EnrollmentResponse"}}}
+        "422": {description: quality or identity consistency failure}
   /internal/v1/face/sessions/{session_id}/frames:
     post:
       security: [{serviceBearer: []}]
       parameters:
         - {name: session_id, in: path, required: true, schema: {type: string}}
         - {name: X-Frame-Id, in: header, required: false, schema: {type: string}}
-      requestBody: {required: true, content: {image/jpeg: {schema: {type: string, format: binary}}, image/webp: {schema: {type: string, format: binary}}}}
+      requestBody:
+        required: true
+        content:
+          image/jpeg: {schema: {type: string, format: binary}}
+          image/webp: {schema: {type: string, format: binary}}
       responses:
-        '200':
-          description: per-face results
-          content: {application/json: {schema: {$ref: '#/components/schemas/FrameResponse'}}}
+        "200":
+          description: one result per detected face; attendance is not mutated
+          content: {application/json: {schema: {$ref: "#/components/schemas/FrameResponse"}}}
 components:
   securitySchemes:
     serviceBearer: {type: http, scheme: bearer}
-    accessBearer: {type: http, scheme: bearer}
   schemas:
-    SuccessResponse:
-      type: object
-      required: [success]
-      properties:
-        success: {type: boolean}
-    DetectResponse:
-      type: object
-      required: [student_id, success]
-      properties:
-        student_id: {type: integer}
-        success: {type: boolean}
-    SessionPayload:
-      type: object
-      required: [model, candidates]
-      properties:
-        model:
-          $ref: '#/components/schemas/VectorModel'
-        candidates:
-          type: array
-          maxItems: 200
-          items:
-            $ref: '#/components/schemas/Candidate'
     VectorModel:
       type: object
       required: [model_id, version, dimension, normalization]
@@ -131,36 +51,18 @@ components:
         version: {type: string}
         dimension: {type: integer, const: 256}
         normalization: {type: string, enum: [l2]}
-    Candidate:
-      type: object
-      required: [student_id, vectors]
-      properties:
-        student_id: {type: string}
-        vectors:
-          type: array
-          minItems: 1
-          maxItems: 20
-          items:
-            type: array
-            minItems: 256
-            maxItems: 256
-            items: {type: number}
     EnrollmentResponse:
       type: object
       required: [model, reviewedFrames, acceptedFrames, vectors]
       properties:
-        model: {$ref: '#/components/schemas/VectorModel'}
-        reviewedFrames: {type: integer}
+        model: {$ref: "#/components/schemas/VectorModel"}
+        reviewedFrames: {type: integer, maximum: 100}
         acceptedFrames: {type: integer}
         vectors:
           type: array
           minItems: 20
           maxItems: 20
-          items:
-            type: array
-            minItems: 256
-            maxItems: 256
-            items: {type: number}
+          items: {type: array, minItems: 256, maxItems: 256, items: {type: number}}
     FrameResponse:
       type: object
       required: [frameId, faces]
@@ -168,20 +70,22 @@ components:
         frameId: {type: string}
         faces:
           type: array
-          items: {$ref: '#/components/schemas/FaceResult'}
+          items: {$ref: "#/components/schemas/FaceResult"}
     FaceResult:
       type: object
-      required: [trackId, bbox, quality, recognition, attempts, qrRecommended]
+      required: [trackId, bbox, landmarks, quality, recognition, attempts, qrRecommended]
       properties:
         trackId: {type: string}
         bbox: {type: array, minItems: 4, maxItems: 4, items: {type: number}}
+        landmarks: {type: array, items: {type: array, minItems: 2, maxItems: 2, items: {type: number}}}
         quality: {type: object}
         recognition:
           type: object
+          required: [status, studentId, score, margin]
           properties:
             status: {type: string, enum: [KNOWN, UNKNOWN, NOT_ATTEMPTED]}
-            studentId: {type: [string, 'null']}
-            score: {type: [number, 'null']}
-            margin: {type: [number, 'null']}
+            studentId: {type: [string, "null"]}
+            score: {type: [number, "null"]}
+            margin: {type: [number, "null"]}
         attempts: {type: integer}
         qrRecommended: {type: boolean}
