@@ -21,7 +21,7 @@
 | SRC-USER-UI | 사용자 최종 첨부 a1a0d14c… | [student-ui.txt](student-ui.txt), 원문 보존 |
 | SRC-ADMIN-UI | 관리자 첨부 ea15d672… | [admin-ui.txt](admin-ui.txt), 원문 보존 |
 | SRC-QR-FACE | 사용자 메시지에 붙여넣은 최신 QR/얼굴 표 | [qr-face.md](qr-face.md), 항목별 전사 |
-| SRC-DATAGSM | 사용자 `DataGSM 값` 메시지 | endpoint/필드/role/개발 callback은 identity 명세에 그대로 기록 |
+| SRC-DATAGSM | 사용자 `DataGSM 값` 메시지와 2026-09-26 `DataGSM 연동 구조 수정안` | userinfo 중첩 구조·ID/학번·status·role 판정·OAuth state 분리·학생 OpenAPI 경계를 identity 명세와 DEC-002에 기록 |
 | SRC-STACK | 사용자 기술 스택·Docker/GitHub Actions 메시지 | scope/operations 명세 |
 | SRC-GSMSV | 사용자 GSM SV 설명 | [gsm-sv.md](gsm-sv.md) |
 | SRC-CONSENT-IMAGE | 얼굴정보 필수 동의 이미지 | 최신 필수 두 항목·선택 공지 수신은 student-ui에도 존재 |

@@ -52,3 +52,8 @@ test('asks for validation after specification changes', () => {
 test('does not announce unrelated source edits', () => {
   assert.equal(postToolNotice({ tool_name: 'Edit', tool_input: { file_path: 'server/src/App.java' } }), null);
 });
+
+test('asks AI work to be recorded in the integrated harness', () => {
+  const notice = postToolNotice({ tool_name: 'Edit', tool_input: { file_path: 'face_pipeline.py' } });
+  assert.match(notice, /harness:worklog/);
+});

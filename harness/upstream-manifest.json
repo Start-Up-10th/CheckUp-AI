@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "sourceDir": "../ALL_harness",
+  "paths": [
+    ".agents",
+    ".claude/skills",
+    ".codex/config.toml",
+    ".codex/README.md",
+    ".github/workflows/harness.yml",
+    "docs/spec",
+    "docs/sources",
+    "tests/acceptance",
+    "contracts/README.md",
+    "web/AGENTS.md",
+    "web/CLAUDE.md",
+    "server/AGENTS.md",
+    "server/CLAUDE.md",
+    "ai/AGENTS.md",
+    "ai/CLAUDE.md",
+    "infra/AGENTS.md",
+    "infra/CLAUDE.md",
+    "infra/.env.example",
+    "harness/check.mjs",
+    "harness/check.test.mjs",
+    "harness/sync-skills.mjs"
+  ],
+  "preservePaths": [
+    "harness/hooks.mjs",
+    "harness/hooks.test.mjs",
+    "harness/upstream-manifest.json",
+    "harness/ai-integration.json",
+    "harness/sync-upstream.mjs",
+    "harness/integrate-ai.mjs",
+    "harness/log-local-work.mjs",
+    "harness/INTEGRATION.md",
+    "harness/local-worklog.md"
+  ]
+}

@@ -30,6 +30,7 @@ playwright-report/
 
 # Local operational / biometric data
 .local/
+README.local.md
 backups/
 datasets/
 models/
@@ -39,3 +40,4 @@ models/
 *.log
 .DS_Store
 Thumbs.db
+ALL_harness가 변경되었을때.md

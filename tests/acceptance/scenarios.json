@@ -60,7 +60,8 @@
       "when": "정상/실패/위조 state로 콜백하고 QR에서 로그인한다",
       "then": [
         "제공된 endpoint와 callback 설정을 사용하며 임의 학교 API를 호출하지 않는다",
-        "위조 state/콜백은 거부하고 정상 QR 로그인은 원래 용도로 이어간다",
+        "백엔드가 생성·저장한 일회성 oauthState와 callback state가 다르면 거부하고 정상 QR 로그인은 원래 용도로 이어간다",
+        "DataGSM status는 accountStatus로, OAuth state는 oauthState로 서로 혼동하지 않는다",
         "실제 연동과 mock 상태가 명시된다"
       ],
       "status": "specified",
@@ -73,12 +74,16 @@
         "REQ-AUTH-002"
       ],
       "title": "학교 명단·호실 매핑",
-      "given": "실제 userinfo와 전체 명단 접근 권한",
+      "given": "학생/교사 userinfo와 학생 OpenAPI 접근 권한",
       "when": "학생/호실 데이터를 동기화한다",
       "then": [
-        "필드 타입·studentId 의미를 실응답으로 확인한다",
+        "student.id=1과 student.studentNumber=1101을 각각 studentId=1과 표시용 studentNumber=1101로 매핑한다",
+        "학생 이름·호실은 student 중첩 객체에서, 교사 이름은 teacher 중첩 객체에서 매핑한다",
         "301은 3층이며 명단 인원으로 분모를 계산한다",
-        "userinfo에 없는 전체 명단/졸업 상태를 있다고 가정하지 않는다"
+        "전체 학생 조회는 userinfo가 아닌 학생 OpenAPI와 STUDENT_READ 권한·페이지네이션을 사용한다",
+        "userinfo에 없는 전체 명단/졸업 상태를 있다고 가정하지 않는다",
+        "student.id 또는 teacher 객체가 누락되면 인증을 실패 처리한다",
+        "status=PENDING이면 로그인하지 않는다"
       ],
       "status": "specified",
       "implementation": [],
@@ -90,10 +95,12 @@
         "REQ-AUTH-003"
       ],
       "title": "역할·데이터 범위",
-      "given": "사감/자치위원/학생/미로그인 세션",
+      "given": "학생 사감·자치위원·일반 학생·사감 교사·일반 교직원·미로그인 세션",
       "when": "관리자 API와 타인 봉사/다른 호실 정보를 요청한다",
       "then": [
-        "사감과 자치위원 권한은 같다",
+        "STUDENT의 student.role=DORMITORY_MANAGER와 STUDENT_COUNCIL은 관리자이고 GENERAL_STUDENT는 일반 학생이다",
+        "TEACHER의 teacher.department=DORMITORY는 관리자이고 GRADE는 일반 교직원이다",
+        "최상위 role=USER인 학생 사감은 정상 관리자이며 최상위 role=DORMITORY_MANAGER만 있는 잘못된 구조는 관리자 판정을 받지 않는다",
         "학생과 비로그인은 관리자 변경·벡터 조회를 거부당한다",
         "학생은 허용된 본인/본인 호실 범위만 조회한다"
       ],
@@ -214,7 +221,9 @@
       "given": "등록자 둘과 미등록 얼굴이 같은 화면에 있다",
       "when": "동시에 인식하고 중복 통과시킨다",
       "then": [
-        "얼굴별 성공/실패가 분리되고 unknown에 학생 이름을 붙이지 않는다",
+        "얼굴별 성공/실패가 분리되고 여러 얼굴의 결과를 서로 섞지 않는다",
+        "KNOWN의 recognition.studentId는 DataGSM student.id 기반 canonical ID이고 UNKNOWN은 studentId=null이다",
+        "unknown에 학생 이름·학번을 붙이지 않는다",
         "성공 기록·알림이 중복되지 않는다",
         "실패가 기존 출석을 지우지 않는다"
       ],

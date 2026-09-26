@@ -281,16 +281,18 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
                     faces.append({"faceIndex": index, "bbox": observation.bbox, "recognition": recognition})
             if not faces:
                 raise FaceServiceError("NO_FACE", "no face was detected")
-            # Preserve the legacy scalar response only for exactly one known face.
+            # The public legacy contract is scalar. Per-face results remain on the
+            # internal session endpoint, where the backend can handle multiple faces.
             known = [item["recognition"] for item in faces if item["recognition"]["status"] == "KNOWN"]
             if len(faces) == 1 and len(known) == 1:
-                value = known[0]["studentId"]
                 try:
-                    value = int(value)
-                except (TypeError, ValueError):
-                    pass
-                return {"student_id": value, "success": True, "faces": faces}
-            return {"success": any(item["recognition"]["status"] == "KNOWN" for item in faces), "faces": faces}
+                    value = int(known[0]["studentId"])
+                except (TypeError, ValueError) as exc:
+                    raise FaceServiceError(
+                        "STUDENT_ID_INVALID", "registered student ID is not an integer", 500
+                    ) from exc
+                return {"student_id": value, "success": True}
+            return {"student_id": None, "success": False}
         except FaceServiceError as exc:
             raise handle_error(exc) from exc
         finally:

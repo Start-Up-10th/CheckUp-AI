@@ -16,6 +16,8 @@
 Client ID·Secret·scope와 정확한 운영 주소는 연동/배포 때 확보한다. 가짜 값을 실서비스 값으로 사용하지 않는다.
 실제 인증 없이 화면·도메인 로직 개발은 가능하며 mock 모드는 운영에서 사용하지 않는다.
 OAuth state, 콜백 검증, 토큰 교환과 세션 보호는 백엔드 책임이다.
+DataGSM 사용자 계정 상태는 `userinfo.status`로 받고 내부에서는 `accountStatus`로 구분한다.
+OAuth 요청과 callback 사이의 CSRF 검증값은 사용자 정보가 아닌 `oauthState`로 별도 관리한다.
 QR 스캔 후 로그인할 때 인증 대상의 용도와 QR 정보를 보존하되 로그인 완료 시 만료를 다시 검사한다.
 
 근거: SRC-DATAGSM, SRC-USER-UI.
@@ -24,32 +26,54 @@ QR 스캔 후 로그인할 때 인증 대상의 용도와 QR 정보를 보존하
 
 | DataGSM | 서비스 내부 의미 |
 | --- | --- |
-| `studentId` | 제공된 학생 식별/학번 값; 형식은 실응답 확인 |
-| `name` | 이름 |
-| `grade` | 학년 |
-| `classNum` | 반 |
-| `number` | 번호 |
-| `dormitoryRoom` | `student.room_number`; 예: 301 |
-| `role` | `DORMITORY_MANAGER`이면 관리자 |
+| 최상위 `id` | `externalUserId` |
+| `student.id` | 내부 canonical `studentId` |
+| `student.studentNumber` | `studentNumber`(화면 표시용 학번) |
+| `student.name` 또는 `teacher.name` | `name` |
+| `student.dormitoryRoom` | `dormitoryRoom` |
+| 최상위 `status` | `accountStatus` |
+| 최상위 `objectType` | `subjectType` |
+| `student.role` | 학생 관리자 권한 판정 |
+| `teacher.department` | 교사 관리자 권한 판정 |
 
-층은 유효한 호실 번호의 `floor(room_number / 100)`으로 계산한다. 소수 나눗셈 결과를 층으로 쓰지 않는다.
+DataGSM `userinfo`는 최상위 `id`, `email`, `role`, `status`, `objectType`과
+`student` 또는 `teacher` 중첩 객체를 반환한다. 학생의 식별자는 `student.id`이고
+`student.studentNumber`는 화면에 표시하는 학번이다. 둘을 같은 필드로 취급하지 않는다.
+DataGSM 원본 DTO의 숫자형 `id`는 원본 경계에서 `Long`으로 처리하고, 기존 내부 계약이
+문자열이면 어댑터에서만 문자열로 변환한다.
+
+최상위 `role`은 DataGSM 계정 역할(`USER`/`ADMIN`)이며 서비스의 사감 관리자 권한과
+직접 연결하지 않는다. 서비스 내부 Principal은 원본 DTO와 분리해 다음 정보를 갖는다.
+학생은 `studentId`, `studentNumber`, `name`, `dormitoryRoom`, `accountStatus`를 매핑하고,
+교사는 학생 식별자와 호실을 갖지 않으며 `name`, `accountStatus`를 매핑한다.
+
+층은 유효한 `dormitoryRoom`의 `floor(dormitoryRoom / 100)`으로 계산한다. 소수 나눗셈 결과를 층으로 쓰지 않는다.
 전체 학생은 기숙사생이다. 호실 구성과 인원은 DataGSM 배정 정보를 기준으로 만든다.
-200명 전체 명단과 호실별 인원을 가져오는 경로는 아직 제공되지 않았다.
-`userinfo` 하나로 전체 학생 명단·전학/퇴사 상태를 조회할 수 있다고 단정하지 않는다.
-API 권한·실제 응답 확인은 백엔드 연동 과제이며 학생 수동 명단 관리 기능을 임의로 추가하지 않는다.
+`userinfo`는 현재 로그인한 한 명의 정보만 반환하므로 전체 학생 명단으로 사용하지 않는다.
+전체 학생·호실 명단은 별도 학생 API `GET https://openapi.datagsm.kr/v1/students`를
+`X-API-KEY`와 `STUDENT_READ` 권한, 페이지네이션으로 조회한다.
+`userinfo`만으로 전체 학생 명단·전학/퇴사 상태를 조회할 수 있다고 가정하지 않는다.
+학생 API의 실제 권한·페이지네이션 응답·졸업/전학/퇴사 신호는 연동 단계에서 확인하며,
+제공되지 않은 필드나 상태값을 임의로 추가하지 않는다.
 
 근거: SRC-DATAGSM, SRC-INTERVIEW.
 
 ### REQ-AUTH-003 — 역할과 접근 범위
 
-사감과 자치위원은 동일한 관리자 권한을 가진다. DataGSM `role == DORMITORY_MANAGER`로 판별한다.
+사감과 자치위원은 동일한 관리자 권한을 가진다. 학생 관리자 여부는
+`objectType == STUDENT`, `student != null`인 경우의 `student.role`로 판별한다.
+`student.role`이 `DORMITORY_MANAGER` 또는 `STUDENT_COUNCIL`이면 관리자다.
+사감 선생님은 `objectType == TEACHER`, `teacher != null`인 경우의
+`teacher.department == DORMITORY`이면 관리자다.
+최상위 `role == ADMIN`은 DataGSM 계정 역할일 뿐 서비스 관리자 권한으로 자동 승격하지 않는다.
+`status != ACTIVE` 계정, 지원하지 않는 `objectType`, 해당 중첩 객체가 없는 응답은 인증을 거부한다.
 QR 생성·얼굴 인식 운영·관리자 전개도·수동 출석 수정·봉사 관리·공지 변경은 관리자 전용이다.
 학생은 본인과 본인 호실 화면에서 허용된 정보만 읽는다. 다른 학생 봉사 정보나 얼굴 벡터는 볼 수 없다.
 관리자 화면을 숨기는 것뿐 아니라 API에서도 역할을 검증한다. 로그인하지 않으면 로그인으로 이동한다.
 관리자 로그인의 권한 부족 문구는 `관리자 권한이 없는 계정입니다.`다.
 관리자 로그인 후에는 관리자 홈으로 이동한다. 관리자에게 학생 얼굴 등록을 강제하는 흐름은 만들지 않는다.
 
-근거: SRC-INTERVIEW, SRC-ADMIN-UI. 관리자 온보딩 분기는 구현 기본값 DEC-001.
+근거: SRC-DATAGSM, SRC-INTERVIEW, SRC-ADMIN-UI. 관리자 온보딩 분기는 구현 기본값 DEC-001.
 
 ### REQ-AUTH-004 — 최초 동의와 온보딩
 
