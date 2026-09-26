@@ -13,6 +13,7 @@
     "ai/AGENTS.md", "ai/CLAUDE.md", "infra/AGENTS.md", "infra/CLAUDE.md", "infra/.env.example",
     "tests/acceptance/README.md", "tests/acceptance/scenarios.json",
     "harness/check.mjs", "harness/check.test.mjs", "harness/hooks.mjs", "harness/hooks.test.mjs", "harness/sync-skills.mjs",
+    "harness/upstream-manifest.json", "harness/ai-integration.json", "harness/sync-upstream.mjs", "harness/sync-upstream.test.mjs", "harness/integrate-ai.mjs", "harness/log-local-work.mjs", "harness/INTEGRATION.md", "harness/local-worklog.md",
     ".codex/hooks.json", ".github/workflows/harness.yml"
   ],
   "skills": ["dorm-implement", "dorm-verify", "dorm-spec-update", "dorm-docker"],

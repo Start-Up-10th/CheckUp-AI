@@ -26,6 +26,23 @@ class FakeModels:
         pass
 
 
+class RegistrationModels:
+    metadata = ModelMetadata()
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def detect(self, _image: np.ndarray) -> list[FaceObservation]:
+        self.calls += 1
+        vector = np.zeros(256, dtype=np.float32)
+        vector[0] = 1
+        count = 20 if self.calls == 1 else 1
+        return [FaceObservation((0.1, 0.1, 0.2, 0.2), ((1.0, 1.0),), vector.copy(), 100, 100, "frontal") for _ in range(count)]
+
+    def close(self) -> None:
+        pass
+
+
 def test_liveness_and_not_ready_without_models():
     app = create_app()
     with TestClient(app) as client:
@@ -74,3 +91,31 @@ def test_frame_results_are_per_face_and_unknown_is_null():
         assert results[0]["recognition"]["studentId"] == "student-a"
         assert results[1]["recognition"]["status"] == "UNKNOWN"
         assert results[1]["recognition"]["studentId"] is None
+
+
+def test_public_registration_and_detection_match_legacy_contract():
+    settings = Settings(
+        landmarker_path=Path("missing-landmarker.task"),
+        embedding_model_path=Path("missing-embedding.xml"),
+        access_token="access-token",
+        student_token_map={"access-token": "7"},
+        match_threshold=0.5,
+        match_margin=0.1,
+    )
+    app = create_app(settings, RegistrationModels())
+    image = np.zeros((64, 64, 3), dtype=np.uint8)
+    _, encoded = cv2.imencode(".jpg", image)
+    headers = {"Authorization": "Bearer access-token"}
+    files = [("images", ("face.jpg", encoded.tobytes(), "image/jpeg"))]
+
+    with TestClient(app) as client:
+        registered = client.post("/api/v1/face/registration", headers=headers, files=files)
+        assert registered.status_code == 201
+        assert registered.json() == {"success": True}
+
+        detected = client.request("GET", "/api/v1/face/detect", headers=headers, files=files)
+        assert detected.status_code == 201
+        assert detected.json() == {"student_id": 7, "success": True}
+
+        duplicate = client.post("/api/v1/face/registration", headers=headers, files=files)
+        assert duplicate.status_code == 409

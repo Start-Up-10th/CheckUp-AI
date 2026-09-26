@@ -1,72 +1,83 @@
-# 기숙사 출석 관리 · Claude Code / Codex 하네스
+# 기숙사 얼굴 AI 서비스
 
-약 200명의 기숙사생, 출입구 3곳, 얼굴 인식·QR 출석을 위한 개발 하네스다. 서비스 구현 전 단계이며 애플리케이션 코드는 아직 없다.
+FastAPI + MediaPipe 기반 얼굴 검출·랜드마크·신원 임베딩 서비스입니다.
 
-이 저장소에서 Claude Code와 Codex가 같은 요구사항, 개발 절차, 검증 기준을 사용한다. 인터뷰 전체를 매번 프롬프트에 붙이지 않아도 작업을 이어갈 수 있다.
+백엔드는 AI 결과를 받아 출석 정책과 출석 DB 반영을 담당합니다. 이 서비스는 출석 DB를 직접 변경하지 않습니다.
 
-## 시작
+## 백엔드 연동 가이드
 
-1. 이 폴더를 프로젝트 루트로 연다.
-2. Node.js 22 이상에서 `npm run harness:check`를 실행한다. 패키지 설치는 필요 없다.
-3. 아래 시작 프롬프트를 Claude Code 또는 Codex에 전달한다.
+상세 요청·응답 스키마는 [얼굴 AI OpenAPI 계약](contracts/ai-face.openapi.yaml)을 기준으로 사용하세요.
 
-```text
-AGENTS.md를 읽고 docs/plans/implementation.md의 첫 미완료 단계를 구현해.
-관련 명세와 담당 영역 지침을 먼저 읽고, 구현·검증 결과와 다음 단계를 계획 파일에 남겨.
-기술 선택은 docs/decisions.md에 근거와 함께 기록해. 서비스 정책은 임의로 변경하지 마.
+### 1. 실행 및 readiness 확인
+
+Python 3.12와 모델 파일을 준비한 뒤 서비스 토큰과 실측된 비교 임계값을 설정합니다.
+
+```powershell
+$env:FACE_SERVICE_TOKEN = "service-token"
+$env:FACE_MATCH_THRESHOLD = "0.6"
+$env:FACE_MATCH_MARGIN = "0.1"
+python -m uvicorn face_api:app
 ```
 
-Claude Code는 [CLAUDE.md](CLAUDE.md)에서 공통 지침을 가져온다. Codex 진입점은 [AGENTS.md](AGENTS.md)다. 새 세션에서 사용하는 것을 권장한다. 실제 모델 호출이나 두 도구 실행은 이 하네스 검사에 포함되지 않는다.
+- `GET /health/live`: 프로세스 생존 확인
+- `GET /health/ready`: 모델과 threshold/margin 준비 확인
 
-## 구조
+`/health/ready`가 `200`일 때만 얼굴 추론 요청을 보내세요.
 
-```text
-.
-├── AGENTS.md / CLAUDE.md      공통 진입 규칙과 Claude 연결
-├── .agents/skills/           공통 스킬 원본, Codex 검색 경로
-├── .claude/skills/           Claude용 동기화본
-├── .codex/                  프로젝트 설정과 사용 안내
-├── docs/
-│   ├── spec/                분야별 제품 명세: REQ 식별자로 추적
-│   ├── sources/             사용자 제공 원문·화면과 출처 지도
-│   ├── architecture.md      서비스 경계와 기술 검증 사항
-│   ├── decisions.md         확정 정책과 구분한 기술 결정
-│   ├── workflow.md          읽기 → 구현 → 검증 → 인계
-│   ├── verification.md      실행 가능한 검사와 제품 검증 구분
-│   └── plans/               단계별 개발 계획과 진행 상황
-├── contracts/               API 계약 관리 경계
-├── web/                     Next.js 담당 지침
-├── server/                  Spring 담당 지침
-├── ai/                      FastAPI·MediaPipe 담당 지침
-├── infra/                   Docker·GitHub Actions·GSM SV 지침
-├── tests/acceptance/         요구사항별 수용 시나리오
-├── harness/                 문서·스킬·추적성 검사·안전 훅과 자체 테스트
-└── .github/workflows/       하네스 검사 CI
+### 공개 호환 API
+
+백엔드 API 명세와 호환되는 공개 엔드포인트도 제공합니다.
+
+- `POST /api/v1/face/registration`: `multipart/form-data`의 `images` 파일 배열을 받아 얼굴을 등록하고 `201 {"success": true}`를 반환합니다.
+- `GET /api/v1/face/detect`: 같은 `images` 파일 배열을 받아 `201 {"student_id": 7, "success": true}` 형식으로 반환합니다.
+- 두 엔드포인트 모두 `Authorization: Bearer {accessToken}`이 필요합니다.
+- 등록 중 얼굴 미검출·저조도·대표 데이터 부족은 `422`, 잘못된 이미지·요청은 `400`, 인증 실패는 `401`, 학생 정보 미확인은 `403`, 중복 등록은 `409`입니다. `409`는 등록 API에만 적용됩니다.
+- 미확인 또는 다수 얼굴인 공개 감지 결과는 `{"student_id": null, "success": false}`입니다. unknown을 임의의 학생으로 변환하지 않습니다.
+
+공개 감지 응답은 기존 백엔드 계약의 단일 결과 형식이고, 다수 얼굴의 얼굴별 결과가 필요할 때는 아래 내부 세션 API를 사용하세요.
+
+### 2. 얼굴 등록 흐름
+
+1. `POST /internal/v1/face/enrollments/extract`로 `video/webm` 또는 `video/mp4`를 보냅니다.
+2. AI 서비스가 최대 약 100개 프레임을 검토합니다.
+3. 품질이 충분한 단일 얼굴에서 대표 임베딩 약 20개를 반환합니다.
+4. 백엔드는 반환된 `model` 정보와 벡터를 같은 모델 버전으로 관리합니다.
+
+원본 영상과 디코딩 프레임은 요청 처리 중에만 사용되며, 처리 후 폐기됩니다.
+
+### 3. 얼굴 인식 흐름
+
+1. `PUT /internal/v1/face/sessions/{session_id}`로 후보 학생의 모델 정보와 벡터를 전달합니다.
+2. 프레임마다 `POST /internal/v1/face/sessions/{session_id}/frames`를 호출합니다.
+3. `faces[]`를 얼굴별로 처리합니다. 결과를 하나의 학생으로 합치지 마세요.
+
+각 얼굴 결과에는 `trackId`, `bbox`, `landmarks`, `quality`, `recognition`이 포함됩니다.
+
+### 인식 상태 해석
+
+- `KNOWN`: 임계값과 후보 간 margin을 모두 통과했습니다. 이때만 `studentId`를 사용합니다.
+- `UNKNOWN`: 후보와 충분히 가깝지 않거나 후보 간 구분이 부족합니다. `studentId`는 반드시 `null`입니다.
+- `NOT_ATTEMPTED`: 저조도, 흐림, 작은 얼굴, 극단적 자세 등으로 인식을 시도하지 않았습니다.
+
+MediaPipe의 검출·랜드마크 결과는 학생 신원 확인 결과가 아닙니다. 신원은 별도 임베딩 모델과 후보 벡터 비교로만 판정합니다.
+
+### 오류 및 fallback
+
+- `401`: 서비스 토큰 오류
+- `404`: 세션 없음
+- `422`: 얼굴·품질·신원 일관성 문제
+- `503`: 모델 미준비
+
+`MULTIPLE_IDENTITIES`, `LOW_LIGHT`, `INSUFFICIENT_QUALITY_FRAMES`가 반환되면 학생을 임의 추정하지 말고 재촬영 또는 QR fallback으로 연결하세요.
+
+원본 영상, 프레임, 임시 임베딩을 로그·브라우저 번들·출석 DB에 저장하지 마세요.
+
+## 개발 및 검증
+
+```powershell
+python -m pytest -q
+python -m ruff check .
+npm run harness:check
 ```
 
-각 서비스 폴더는 향후 코드 위치다. 현재 들어 있는 파일은 담당 지침이며, 작동하는 서비스를 가장한 빈 앱·가짜 API는 만들지 않았다.
-
-## 공통 스킬
-
-| 용도 | Codex | Claude Code |
-| --- | --- | --- |
-| 기능 구현·이어하기 | `$dorm-implement` | `/dorm-implement` |
-| 변경 검증·명세 대조 | `$dorm-verify` | `/dorm-verify` |
-| 요구사항 변경 반영 | `$dorm-spec-update` | `/dorm-spec-update` |
-| Docker·Compose·컨테이너 배포/장애 | `$dorm-docker` | `/dorm-docker` |
-
-스킬 원본은 `.agents/skills`에서만 수정한다. `npm run harness:sync`로 Claude 복사본을 갱신하고 함께 커밋한다. Windows에서 별도 심볼릭 링크 권한 없이 작동한다.
-
-`harness/hooks.mjs`는 Claude Code와 Codex에 공통 연결되어 credential 형태의 문자열과 위험한 Git·Docker·데이터베이스 삭제 명령을 차단한다. 명세·스킬·하네스 변경 뒤에는 검사를 안내하며, 최종 기준은 `npm run harness:check`와 CI다.
-
-## 문서 찾기
-
-- 전체 명세 목차: [docs/spec/index.md](docs/spec/index.md)
-- 이전 요약의 정정·출처 우선순위: [docs/sources/README.md](docs/sources/README.md)
-- 개발자가 판단할 기술 항목: [docs/decisions.md](docs/decisions.md)
-- 사용자가 다시 정할 필요 없는 개발 순서: [docs/plans/implementation.md](docs/plans/implementation.md)
-- 검증 범위·명령: [docs/verification.md](docs/verification.md)
-- 하네스 평가·재현 근거: [2026-09-23 평가](docs/reviews/harness-assessment-2026-09-23.md)
-- 하네스 개선 순서·완료 기준: [개선 계획](docs/plans/harness-improvements.md)
-
-GitHub 저장소 생성·커밋·푸시·실제 배포는 수행하지 않았다. 운영 OAuth 값과 서버 접속 정보는 연동 단계에서 제공한다.
+하네스 및 개발 절차는 [AGENTS.md](AGENTS.md), [ai/AGENTS.md](ai/AGENTS.md), `docs/`에서 확인할 수 있습니다. 개인용 기존 README는 `README.local.md`에 보존되어 있으며 Git에는 포함하지 않습니다.

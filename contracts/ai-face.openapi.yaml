@@ -11,6 +11,42 @@ paths:
       responses:
         "200": {description: model and calibration ready}
         "503": {description: model or calibration unavailable}
+  /api/v1/face/registration:
+    post:
+      security: [{accessBearer: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: {$ref: "#/components/schemas/FaceImagesRequest"}
+      responses:
+        "201":
+          description: face registration succeeded
+          content: {application/json: {schema: {$ref: "#/components/schemas/FaceRegistrationResponse"}}}
+        "400": {description: malformed request or invalid image}
+        "401": {description: missing or invalid access token}
+        "403": {description: student information was not found}
+        "409": {description: face data is already registered}
+        "422": {description: no face detected or insufficient face data}
+        "500": {description: internal server error}
+  /api/v1/face/detect:
+    get:
+      description: Multipart GET is retained for compatibility with the existing backend contract.
+      security: [{accessBearer: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: {$ref: "#/components/schemas/FaceImagesRequest"}
+      responses:
+        "201":
+          description: face detection result
+          content: {application/json: {schema: {$ref: "#/components/schemas/PublicFaceDetectResponse"}}}
+        "400": {description: malformed request or invalid image}
+        "401": {description: missing or invalid access token}
+        "403": {description: student information was not found}
+        "422": {description: no face detected or insufficient face data}
+        "500": {description: internal server error}
   /internal/v1/face/enrollments/extract:
     post:
       security: [{serviceBearer: []}]
@@ -42,7 +78,27 @@ paths:
 components:
   securitySchemes:
     serviceBearer: {type: http, scheme: bearer}
+    accessBearer: {type: http, scheme: bearer}
   schemas:
+    FaceImagesRequest:
+      type: object
+      required: [images]
+      properties:
+        images:
+          type: array
+          minItems: 1
+          items: {type: string, format: binary}
+    FaceRegistrationResponse:
+      type: object
+      required: [success]
+      properties:
+        success: {type: boolean}
+    PublicFaceDetectResponse:
+      type: object
+      required: [student_id, success]
+      properties:
+        student_id: {type: [integer, "null"]}
+        success: {type: boolean}
     VectorModel:
       type: object
       required: [model_id, version, dimension, normalization]

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "sourceDir": "../AI-feat",
+  "paths": [
+    "face_api.py",
+    "face_config.py",
+    "face_models.py",
+    "face_pipeline.py",
+    "face_tracker.py",
+    "pyproject.toml",
+    "contracts/ai-face.openapi.yaml",
+    "docs/plans/face-recognition-test-plan.md",
+    "tests/face_service"
+  ]
+}

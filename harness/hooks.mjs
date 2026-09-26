@@ -56,6 +56,18 @@ function contentFrom(payload) {
     .join('\n');
 }
 
+function isAiIntegrationFile(filePath) {
+  return filePath === 'face_api.py'
+    || filePath === 'face_config.py'
+    || filePath === 'face_models.py'
+    || filePath === 'face_pipeline.py'
+    || filePath === 'face_tracker.py'
+    || filePath === 'pyproject.toml'
+    || filePath === 'contracts/ai-face.openapi.yaml'
+    || filePath.startsWith('docs/plans/face-recognition')
+    || filePath.startsWith('tests/face_service/');
+}
+
 function isLocalSecretFile(filePath) {
   const name = basename(filePath);
   return /^\.env(?:\.(?!example$|template$)[A-Za-z0-9_-]+)?$/.test(name);
@@ -93,6 +105,7 @@ export function inspectPreTool(payload) {
 export function postToolNotice(payload) {
   if (!WRITE_TOOLS.has(toolName(payload))) return null;
   const filePath = filePathFrom(payload).replaceAll('\\', '/');
+  const aiChanged = isAiIntegrationFile(filePath);
   const skillChanged = filePath.startsWith('.agents/skills/') || filePath.startsWith('.claude/skills/');
   const harnessChanged = skillChanged
     || filePath.startsWith('docs/spec/')
@@ -103,10 +116,11 @@ export function postToolNotice(payload) {
     || filePath === '.claude/settings.json'
     || filePath === '.codex/hooks.json';
 
-  if (!harnessChanged) return null;
+  if (!harnessChanged && !aiChanged) return null;
   const commands = [];
   if (skillChanged) commands.push('npm run harness:sync');
   commands.push('npm run harness:check');
+  if (aiChanged) commands.push('npm run harness:worklog -- "작업 요약"');
   return `[harness] ${filePath || '하네스 관련 파일'} 변경됨. 실행 권장: ${commands.join(' 후 ')}`;
 }
 
