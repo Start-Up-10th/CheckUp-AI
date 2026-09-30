@@ -6,6 +6,8 @@ QR 출석 API 계약은 [qr.openapi.yaml](qr.openapi.yaml)에 기록한다.
 
 `/internal/*`은 Spring 백엔드와 AI 서버 사이의 비공개 계약이다. Spring은 `Authorization: Bearer {FACE_SERVICE_TOKEN}`으로 AI를 호출한다. 이는 OAuth 토큰이 아닌 서비스 간 인증 값이며 웹 브라우저에 노출하면 안 된다. AI는 `SESSION` 쿠키나 DataGSM `accessToken`을 받거나 검증하지 않는다.
 
+얼굴 후보의 `student_id`는 Spring이 DataGSM `student.id`에서 변환한 canonical 학생 ID의 문자열이다. AI는 이를 불투명한 식별자로 취급해 `KNOWN` 결과에 그대로 반환한다. CheckUp DB 기본 키나 화면 표시용 `studentNumber`로 변환하지 않는다. `UNKNOWN` 결과의 `studentId`는 `null`이다.
+
 브라우저는 Spring에 로그인 세션 쿠키 `SESSION`으로 인증한다. 얼굴 등록 시 Spring 공개 API가 사용자·동의·중복 여부를 확인하고, AI의 `POST /internal/v1/face/enrollments/extract`에 MediaRecorder 원본 영상 body를 전달한다. AI는 대표 벡터와 모델 정보를 반환하고, 학생 연결·중복 검사·벡터 저장·사용자용 성공 응답은 Spring이 담당한다. CheckUp-server main에는 Spring-AI 얼굴 등록 연동 경로가 아직 없으므로 API 계약은 실제 연동 전 제공자/소비자 검토가 필요하다.
 
 계약을 구현과 함께 갱신하고 웹/백엔드/AI 담당자가 같은 경로와 예제로 확인한다. OpenAPI 파일이 있다는 사실만으로 프론트엔드 연동이 완료되지는 않는다.

@@ -88,7 +88,7 @@ def test_frame_results_are_per_face_and_unknown_is_null():
             "dimension": 256,
             "normalization": "l2",
         },
-        "candidates": [{"student_id": "student-a", "vectors": [[1.0] + [0.0] * 255]}],
+        "candidates": [{"student_id": "9007199254740993", "vectors": [[1.0] + [0.0] * 255]}],
     }
     with TestClient(app) as client:
         setup = client.put(
@@ -107,10 +107,35 @@ def test_frame_results_are_per_face_and_unknown_is_null():
         assert response is not None and response.status_code == 200
         results = response.json()["faces"]
         assert len(results) == 2
-        assert results[0]["recognition"]["studentId"] == "student-a"
+        assert results[0]["recognition"]["studentId"] == "9007199254740993"
         assert results[1]["recognition"]["status"] == "UNKNOWN"
         assert results[1]["recognition"]["studentId"] is None
         assert results[0]["landmarks"] == [[1.25, 2.5]]
+
+
+def test_candidate_rejects_numeric_student_id():
+    settings = Settings(
+        landmarker_path=Path("missing-landmarker.task"),
+        embedding_model_path=Path("missing-embedding.xml"),
+        service_token="test-token",
+    )
+    app = create_app(settings, FakeModels())
+    payload = {
+        "model": {
+            "model_id": "openvino/face-reidentification-retail-0095",
+            "version": settings.model_version,
+            "dimension": 256,
+            "normalization": "l2",
+        },
+        "candidates": [{"student_id": 9007199254740993, "vectors": [[1.0] + [0.0] * 255]}],
+    }
+    with TestClient(app) as client:
+        response = client.put(
+            "/internal/v1/face/sessions/s1",
+            headers={"Authorization": "Bearer test-token"},
+            json=payload,
+        )
+    assert response.status_code == 422
 
 
 def test_internal_enrollment_extract_accepts_raw_video_with_service_token():
@@ -171,6 +196,9 @@ def test_openapi_documents_internal_service_bearer_and_no_public_oauth_routes():
     bearer = schema["components"]["securitySchemes"]["serviceBearer"]
     assert bearer["type"] == "http"
     assert bearer["scheme"] == "bearer"
+    candidate_id = schema["components"]["schemas"]["Candidate"]["properties"]["student_id"]
+    assert candidate_id["type"] == "string"
+    assert "canonical ID" in candidate_id["description"]
     for path, methods in schema["paths"].items():
         if path.startswith("/internal/"):
             for operation in methods.values():

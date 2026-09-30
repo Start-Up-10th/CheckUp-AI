@@ -36,7 +36,14 @@ class VectorModel(BaseModel):
 
 
 class Candidate(BaseModel):
-    student_id: str = Field(min_length=1)
+    student_id: str = Field(
+        min_length=1,
+        strict=True,
+        description=(
+            "Opaque string form of the DataGSM student.id canonical ID; "
+            "not a database key or studentNumber."
+        ),
+    )
     vectors: list[VectorValues] = Field(min_length=1, max_length=20)
 
 
