@@ -62,6 +62,8 @@
         "제공된 endpoint와 callback 설정을 사용하며 임의 학교 API를 호출하지 않는다",
         "백엔드가 생성·저장한 일회성 oauthState와 callback state가 다르면 거부하고 정상 QR 로그인은 원래 용도로 이어간다",
         "DataGSM status는 accountStatus로, OAuth state는 oauthState로 서로 혼동하지 않는다",
+        "로그인 완료 후 브라우저 인증은 SESSION 쿠키이며 DataGSM accessToken은 브라우저나 AI로 전달하지 않는다",
+        "Spring이 AI를 호출할 때만 별도 FACE_SERVICE_TOKEN bearer를 사용한다",
         "실제 연동과 mock 상태가 명시된다"
       ],
       "status": "specified",
@@ -98,7 +100,7 @@
       "given": "학생 사감·자치위원·일반 학생·사감 교사·일반 교직원·미로그인 세션",
       "when": "관리자 API와 타인 봉사/다른 호실 정보를 요청한다",
       "then": [
-        "STUDENT의 student.role=DORMITORY_MANAGER와 STUDENT_COUNCIL은 관리자이고 GENERAL_STUDENT는 일반 학생이다",
+        "STUDENT의 student.role=DORMITORY_MANAGER는 관리자이고 STUDENT_COUNCIL과 GENERAL_STUDENT는 일반 학생이다",
         "TEACHER의 teacher.department=DORMITORY는 관리자이고 GRADE는 일반 교직원이다",
         "최상위 role=USER인 학생 사감은 정상 관리자이며 최상위 role=DORMITORY_MANAGER만 있는 잘못된 구조는 관리자 판정을 받지 않는다",
         "학생과 비로그인은 관리자 변경·벡터 조회를 거부당한다",

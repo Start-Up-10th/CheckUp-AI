@@ -106,7 +106,7 @@ class InferenceModels:
                     observations.append(
                         FaceObservation(
                             bbox,
-                            tuple(map(tuple, five)),
+                            tuple((float(x), float(y)) for x, y in five),
                             embedding,
                             brightness,
                             sharpness,

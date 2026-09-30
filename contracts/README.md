@@ -1,10 +1,22 @@
 # 서비스 간 계약
 
 제품 정책은 [명세](../docs/spec/index.md), 기술 경계는 [아키텍처](../docs/architecture.md)를 따른다.
-현재 확정된 공개 API는 DataGSM 사용자가 제공한 엔드포인트뿐이다. 내부 REST 경로와 schema는 아직 없다.
+QR 출석 API 계약은 [qr.openapi.yaml](qr.openapi.yaml)에 기록한다.
+얼굴 등록 및 AI 추론 API는 [ai-face.openapi.yaml](ai-face.openapi.yaml)에 기록한다. 얼굴 등록은 MediaRecorder 영상 업로드를 받도록 정의한다.
 
-백엔드 첫 기능 구현 시 실제 OpenAPI 계약을 이 폴더에 생성하고 웹/AI 담당자와 공유한다.
-빈 OpenAPI 파일로 계약이 완료됐다고 처리하지 않는다.
+`/internal/*`은 Spring 백엔드와 AI 서버 사이의 비공개 계약이다. Spring은 `Authorization: Bearer {FACE_SERVICE_TOKEN}`으로 AI를 호출한다. 이는 OAuth 토큰이 아닌 서비스 간 인증 값이며 웹 브라우저에 노출하면 안 된다. AI는 `SESSION` 쿠키나 DataGSM `accessToken`을 받거나 검증하지 않는다.
+
+브라우저는 Spring에 로그인 세션 쿠키 `SESSION`으로 인증한다. 얼굴 등록 시 Spring 공개 API가 사용자·동의·중복 여부를 확인하고, AI의 `POST /internal/v1/face/enrollments/extract`에 MediaRecorder 원본 영상 body를 전달한다. AI는 대표 벡터와 모델 정보를 반환하고, 학생 연결·중복 검사·벡터 저장·사용자용 성공 응답은 Spring이 담당한다. CheckUp-server main에는 Spring-AI 얼굴 등록 연동 경로가 아직 없으므로 API 계약은 실제 연동 전 제공자/소비자 검토가 필요하다.
+
+계약을 구현과 함께 갱신하고 웹/백엔드/AI 담당자가 같은 경로와 예제로 확인한다. OpenAPI 파일이 있다는 사실만으로 프론트엔드 연동이 완료되지는 않는다.
+
+## 인증 (구현됨)
+
+- OAuth 로그인 상태는 `SESSION` 쿠키로 전달한다. 웹은 쿠키를 포함해 Spring API를 요청하며 `Authorization`·`RefreshToken` 헤더로 로그인 상태를 전달하지 않는다.
+- Spring 인증 경로는 `GET /api/v1/auth/login`, `GET /api/v1/auth/callback`(query `code`, `state`), `GET /api/v1/auth/me`, `POST /api/v1/auth/logout`이다. 로그인 응답은 회원 `name`, `role`이고 세션 쿠키가 설정된다. 세부는 [인증 계획](../docs/plans/auth.md).
+- Spring에서 AI를 호출하는 경우에만 `FACE_SERVICE_TOKEN` Bearer 인증을 사용한다. DataGSM access token은 서버 안에서 userinfo를 조회하는 용도이며 AI 호출용이 아니다.
+- 상태 코드: 400 = `state` 없음·만료·재사용, 401 = 비로그인, 403 = 권한 없음·비활성 계정, 로그아웃 성공 = 204.
+- 공통 오류 envelope는 아직 없다.
 
 계약에 반드시 표현할 내용:
 
