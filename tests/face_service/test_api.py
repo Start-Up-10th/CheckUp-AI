@@ -3,6 +3,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 from face_api import create_app
@@ -33,7 +34,11 @@ class FakeModels:
 class EnrollmentFakeModels:
     metadata = ModelMetadata()
 
+    def __init__(self) -> None:
+        self.detect_calls = 0
+
     def detect(self, _image: np.ndarray) -> list[FaceObservation]:
+        self.detect_calls += 1
         embedding = np.zeros(256, dtype=np.float32)
         embedding[0] = 1
         return [FaceObservation((0.1, 0.1, 0.2, 0.2), ((8.0, 8.0),), embedding, 100, 100, "frontal")]
@@ -111,6 +116,12 @@ def test_frame_results_are_per_face_and_unknown_is_null():
         assert results[1]["recognition"]["status"] == "UNKNOWN"
         assert results[1]["recognition"]["studentId"] is None
         assert results[0]["landmarks"] == [[1.25, 2.5]]
+        deleted = client.delete(
+            "/internal/v1/face/sessions/s1",
+            headers={"Authorization": "Bearer test-token"},
+        )
+        assert deleted.status_code == 200
+        assert deleted.json() == {"status": "deleted"}
 
 
 def test_candidate_rejects_numeric_student_id():
@@ -165,24 +176,69 @@ def test_internal_enrollment_extract_accepts_raw_video_with_service_token():
     assert all(len(vector) == 256 for vector in payload["vectors"])
 
 
-def test_internal_enrollment_rejects_datagsm_user_token():
+@pytest.mark.parametrize(
+    ("method", "path", "request_kwargs"),
+    [
+        (
+            "POST",
+            "/internal/v1/face/enrollments/extract",
+            {"headers": {"Content-Type": "video/mp4"}, "content": b"too-large"},
+        ),
+        (
+            "PUT",
+            "/internal/v1/face/sessions/auth-check",
+            {
+                "headers": {"Content-Type": "application/json"},
+                "content": b"{",
+            },
+        ),
+        (
+            "POST",
+            "/internal/v1/face/sessions/auth-check/frames",
+            {
+                "headers": {"Content-Type": "image/jpeg", "X-Frame-Id": "frame-1"},
+                "content": b"too-large",
+            },
+        ),
+        ("DELETE", "/internal/v1/face/sessions/auth-check", {}),
+    ],
+)
+@pytest.mark.parametrize(
+    ("credential_headers", "cookies"),
+    [
+        ({}, None),
+        ({"Authorization": "Bearer wrong-service-token"}, None),
+        ({"Authorization": "Bearer datagsm-user-token"}, None),
+        ({}, {"SESSION": "browser-session-token"}),
+    ],
+    ids=["missing", "wrong-service-token", "datagsm-access-token", "browser-session-cookie"],
+)
+def test_internal_routes_require_service_bearer_before_processing_request(
+    method, path, request_kwargs, credential_headers, cookies
+):
     settings = Settings(
         landmarker_path=Path("missing-landmarker.task"),
         embedding_model_path=Path("missing-embedding.xml"),
         service_token="service-token",
+        max_body_bytes=1,
     )
-    app = create_app(settings, EnrollmentFakeModels())
+    models = EnrollmentFakeModels()
+    app = create_app(settings, models)
+    kwargs = dict(request_kwargs)
+    headers = {**kwargs.pop("headers", {}), **credential_headers}
+
     with TestClient(app) as client:
-        response = client.post(
-            "/internal/v1/face/enrollments/extract",
-            headers={
-                "Authorization": "Bearer datagsm-user-token",
-                "Content-Type": "video/mp4",
-            },
-            content=make_test_mp4(),
-        )
+        if cookies is not None:
+            client.cookies.set("SESSION", cookies["SESSION"])
+        response = client.request(method, path, headers=headers, **kwargs)
+
     assert response.status_code == 401
     assert response.json()["detail"]["code"] == "UNAUTHORIZED"
+    assert all(
+        token not in response.text
+        for token in ("service-token", "wrong-service-token", "datagsm-user-token", "browser-session-token")
+    )
+    assert models.detect_calls == 0
 
 
 def test_openapi_documents_internal_service_bearer_and_no_public_oauth_routes():
@@ -215,3 +271,4 @@ def test_openapi_documents_internal_service_bearer_and_no_public_oauth_routes():
     assert set(frames["requestBody"]["content"]) == {"image/jpeg", "image/webp"}
     assert "/api/v1/face/registration" not in schema["paths"]
     assert "/api/v1/face/detect" not in schema["paths"]
+    assert not any(path.startswith("/api/v1/auth/") for path in schema["paths"])
