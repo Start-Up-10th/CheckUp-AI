@@ -10,17 +10,19 @@ QR 출석 API 계약은 [qr.openapi.yaml](qr.openapi.yaml)에 기록한다.
 
 계약을 구현과 함께 갱신하고 웹/백엔드/AI 담당자가 같은 경로와 예제로 확인한다. OpenAPI 파일이 있다는 사실만으로 프론트엔드 연동이 완료되지는 않는다.
 
-## 인증 (구현됨)
+## 인증 (CheckUp-server 소스 확인)
 
+- 웹은 body 없는 `GET /api/v1/auth/login`으로 Spring 로그인을 시작한다. callback에는 `code`, `state`가 오며 state/PKCE 검증, 토큰 교환, userinfo 조회와 DataGSM access token 처리는 Spring 책임이다.
+- callback 성공 응답은 브랜치별로 다르다. 2026-09-30에 확인한 CheckUp-server develop은 `SESSION` 쿠키와 `302 /login/complete`를 반환하고, main은 `SESSION` 쿠키와 `200 {"name": string, "role": "STUDENT" | "ADMIN"}`을 반환한다. 고정 SHA와 웹 조합은 [인증 계약 계획](../docs/plans/auth.md)에 기록한다. 이 응답들을 한 흐름으로 섞거나 배포 동작이라고 단정하지 않는다.
+- 현재 `GET /api/v1/auth/me`는 `SESSION` 쿠키 인증 후 `{ "name": string, "role": "STUDENT" | "ADMIN" }`만 반환한다. 학생 프로필·동의 상태·얼굴 등록 상태는 현재 계약에 없다. 미구현 `CurrentMemberResponse` 확장은 저장된 실제 상태를 조회할 도메인 구현 후 별도 계약으로 정한다.
 - OAuth 로그인 상태는 `SESSION` 쿠키로 전달한다. 웹은 쿠키를 포함해 Spring API를 요청하며 `Authorization`·`RefreshToken` 헤더로 로그인 상태를 전달하지 않는다.
-- Spring 인증 경로는 `GET /api/v1/auth/login`, `GET /api/v1/auth/callback`(query `code`, `state`), `GET /api/v1/auth/me`, `POST /api/v1/auth/logout`이다. 로그인 응답은 회원 `name`, `role`이고 세션 쿠키가 설정된다. 세부는 [인증 계획](../docs/plans/auth.md).
+- Spring에는 `POST /api/v1/auth/logout` 경로가 있지만, 검토한 CheckUp-Client develop은 이를 호출하지 않는다. endpoint 존재를 웹 로그아웃 연동 완료로 간주하지 않는다.
 - Spring에서 AI를 호출하는 경우에만 `FACE_SERVICE_TOKEN` Bearer 인증을 사용한다. DataGSM access token은 서버 안에서 userinfo를 조회하는 용도이며 AI 호출용이 아니다.
-- 상태 코드: 400 = `state` 없음·만료·재사용, 401 = 비로그인, 403 = 권한 없음·비활성 계정, 로그아웃 성공 = 204.
 - 공통 오류 envelope는 아직 없다.
 
 계약에 반드시 표현할 내용:
 
-- OAuth 세션의 사용자 역할, 동의/등록 완료 상태, 본인 데이터 범위.
+- 현재 `/auth/me` 응답은 역할만 포함한다. 동의/등록 상태와 학생 데이터 범위는 저장·권한 검증 구현 후 확장 계약에 추가하며, 현행 응답으로 약속하지 않는다.
 - 자습실/기숙사 purpose와 운영일, 서버 UTC 시각·08:00 KST 경계.
 - 페이지별 독립 QR/카메라 session ID, 토큰 만료 시각, 종료/갱신 오류.
 - 출석 단일 처리의 event ID/중복 판정, 원래 발생 시각과 서버 수신 시각.
