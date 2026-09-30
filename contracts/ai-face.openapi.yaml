@@ -247,7 +247,10 @@ components:
       type: object
       required: [student_id, vectors]
       properties:
-        student_id: {type: string, minLength: 1}
+        student_id:
+          type: string
+          minLength: 1
+          description: Opaque string form of the DataGSM student.id canonical ID; not a database key or studentNumber.
         vectors:
           type: array
           minItems: 1
@@ -312,7 +315,9 @@ components:
           required: [status, studentId, score, margin]
           properties:
             status: {type: string, enum: [KNOWN, UNKNOWN, NOT_ATTEMPTED]}
-            studentId: {type: [string, "null"]}
+            studentId:
+              type: [string, "null"]
+              description: Exact canonical ID from a KNOWN candidate; null for UNKNOWN or NOT_ATTEMPTED.
             score: {type: [number, "null"]}
             margin: {type: [number, "null"]}
         attempts: {type: integer, minimum: 0}
