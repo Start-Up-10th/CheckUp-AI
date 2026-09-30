@@ -4,11 +4,12 @@ import asyncio
 import io
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Literal
 
 import cv2
 import numpy as np
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Response, UploadFile
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Request, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from face_config import Settings
@@ -24,22 +25,80 @@ from face_pipeline import (
 )
 from face_tracker import TrackManager
 
+VectorValues = Annotated[list[float], Field(min_length=256, max_length=256)]
+
 
 class VectorModel(BaseModel):
     model_id: str
     version: str
-    dimension: int
-    normalization: str
+    dimension: Literal[256]
+    normalization: Literal["l2"]
 
 
 class Candidate(BaseModel):
     student_id: str = Field(min_length=1)
-    vectors: list[list[float]] = Field(min_length=1, max_length=20)
+    vectors: list[VectorValues] = Field(min_length=1, max_length=20)
 
 
 class SessionPayload(BaseModel):
     model: VectorModel
     candidates: list[Candidate] = Field(max_length=200)
+
+
+class EnrollmentResponse(BaseModel):
+    model: VectorModel
+    reviewedFrames: int = Field(ge=0, le=100)
+    acceptedFrames: int = Field(ge=0, le=100)
+    vectors: list[VectorValues] = Field(min_length=1, max_length=20)
+
+
+class ErrorDetail(BaseModel):
+    code: str
+    message: str | None = None
+
+
+class ErrorResponse(BaseModel):
+    detail: ErrorDetail | list[dict[str, object]]
+
+
+class SessionReadyResponse(BaseModel):
+    status: Literal["ready"]
+
+
+class SessionDeletedResponse(BaseModel):
+    status: Literal["deleted"]
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok", "ready", "not_ready"]
+
+
+class FaceQuality(BaseModel):
+    brightness: float
+    sharpness: float
+    issues: list[str]
+
+
+class FaceRecognition(BaseModel):
+    status: Literal["KNOWN", "UNKNOWN", "NOT_ATTEMPTED"]
+    studentId: str | None
+    score: float | None
+    margin: float | None
+
+
+class FaceResult(BaseModel):
+    trackId: str
+    bbox: tuple[float, float, float, float]
+    landmarks: list[tuple[float, float]]
+    quality: FaceQuality
+    recognition: FaceRecognition
+    attempts: int = Field(ge=0)
+    qrRecommended: bool
+
+
+class FrameResponse(BaseModel):
+    frameId: str
+    faces: list[FaceResult]
 
 
 @dataclass
@@ -52,7 +111,6 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
     cfg = settings or Settings()
     metadata = ModelMetadata(version=cfg.model_version)
     sessions: dict[str, Session] = {}
-    registered_candidates: dict[str, list[np.ndarray]] = {}
     lock = asyncio.Lock()
 
     @asynccontextmanager
@@ -67,73 +125,45 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
             session.tracker.reset()
             _clear_vectors(session.candidates)
         sessions.clear()
-        _clear_vectors(registered_candidates)
-        registered_candidates.clear()
         if runtime is not None and models is None:
             runtime.close()
 
     app = FastAPI(title="Dormitory Face Inference Service", version="0.1.0", lifespan=lifespan)
 
-    async def auth(authorization: Annotated[str | None, Header()] = None) -> None:
-        if not cfg.service_token or authorization != f"Bearer {cfg.service_token}":
-            raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED"})
+    service_bearer = HTTPBearer(
+        auto_error=False,
+        scheme_name="serviceBearer",
+        description="Private Spring-to-AI service token. This is not a DataGSM OAuth access token.",
+    )
 
-    def public_token(authorization: str | None) -> str:
-        if not authorization or not authorization.startswith("Bearer "):
+    async def auth(
+        credentials: HTTPAuthorizationCredentials | None = Depends(service_bearer),
+    ) -> None:
+        if (
+            not cfg.service_token
+            or credentials is None
+            or credentials.credentials != cfg.service_token
+        ):
             raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED"})
-        token = authorization.removeprefix("Bearer ").strip()
-        accepted = {value for value in (cfg.access_token, cfg.service_token) if value}
-        if not token or not accepted or token not in accepted:
-            raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED"})
-        return token
-
-    def public_student_id(authorization: str | None) -> str:
-        token = public_token(authorization)
-        student_id = cfg.student_token_map.get(token)
-        if not student_id:
-            raise HTTPException(status_code=403, detail={"code": "STUDENT_NOT_FOUND"})
-        return student_id
 
     def handle_error(exc: FaceServiceError) -> HTTPException:
         return HTTPException(
             status_code=exc.status, detail={"code": exc.code, "message": exc.message}
         )
 
-    @app.get("/health/live")
+    @app.get("/health/live", response_model=HealthResponse)
     async def live() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/health/ready")
+    @app.get(
+        "/health/ready",
+        response_model=HealthResponse,
+        responses={503: {"model": HealthResponse, "description": "Models are not ready."}},
+    )
     async def ready() -> Response:
         if getattr(app.state, "models", None) is None or not cfg.ready_for_inference:
             return Response(status_code=503, content='{"status":"not_ready"}', media_type="application/json")
         return Response(status_code=200, content='{"status":"ready"}', media_type="application/json")
-
-    async def read_images(images: list[UploadFile]) -> list[np.ndarray]:
-        if not images:
-            raise FaceServiceError("INVALID_MEDIA", "images must contain at least one file", 400)
-        decoded: list[np.ndarray] = []
-        try:
-            for upload in images:
-                if upload.content_type not in {"image/jpeg", "image/webp", "image/png"}:
-                    raise FaceServiceError("INVALID_MEDIA", "images must be JPEG, WebP, or PNG", 400)
-                raw = bytearray(await upload.read())
-                try:
-                    if len(raw) > cfg.max_body_bytes:
-                        raise FaceServiceError("PAYLOAD_TOO_LARGE", "image exceeds configured limit", 400)
-                    image = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
-                finally:
-                    raw[:] = b"\x00" * len(raw)
-                if image is None:
-                    raise FaceServiceError("INVALID_MEDIA", "one image is not decodable", 400)
-                decoded.append(image)
-            return decoded
-        except Exception:
-            _clear_images(decoded)
-            raise
-        finally:
-            for upload in images:
-                await upload.close()
 
     async def read_body(request: Request) -> bytearray:
         data = bytearray()
@@ -143,164 +173,65 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
                 if len(data) > cfg.max_body_bytes:
                     raise FaceServiceError("PAYLOAD_TOO_LARGE", "request body exceeds configured limit", 413)
             return data
-        except Exception:
+        except BaseException:
             data[:] = b"\x00" * len(data)
             raise
 
-    @app.post("/internal/v1/face/enrollments/extract", dependencies=[Depends(auth)])
-    async def enroll(request: Request) -> dict[str, object]:
+    @app.post(
+        "/internal/v1/face/enrollments/extract",
+        response_model=EnrollmentResponse,
+        dependencies=[Depends(auth)],
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "video/webm": {"schema": {"type": "string", "format": "binary"}},
+                    "video/mp4": {"schema": {"type": "string", "format": "binary"}},
+                },
+            }
+        },
+        responses={
+            400: {"model": ErrorResponse, "description": "Unsupported or undecodable video."},
+            401: {"model": ErrorResponse, "description": "Missing or invalid service bearer token."},
+            413: {"model": ErrorResponse, "description": "Video exceeds the configured size limit."},
+            422: {"model": ErrorResponse, "description": "Video contains multiple identities or insufficient quality frames."},
+            500: {"model": ErrorResponse, "description": "Unexpected inference error."},
+            503: {"model": ErrorResponse, "description": "Inference models are not ready."},
+        },
+    )
+    async def enroll(request: Request) -> EnrollmentResponse:
         runtime: InferenceModels | None = app.state.models
         if runtime is None:
             raise handle_error(FaceServiceError("MODEL_NOT_READY", "models are not loaded", 503))
         if request.headers.get("content-type", "").split(";", 1)[0] not in {"video/webm", "video/mp4"}:
             raise handle_error(FaceServiceError("INVALID_MEDIA", "expected WebM or MP4 video", 400))
         body: bytearray | None = None
-        container = None
-        observations: list[FaceObservation] = []
         vectors: list[np.ndarray] = []
         try:
             body = await read_body(request)
-            container = __import__("av").open(io.BytesIO(body), mode="r")
-            stream = container.streams.video[0]
-            total = int(stream.frames or 0)
-            targets = _sample_indices(total, cfg.enrollment_frames) if total else None
-            tracks = TrackManager()
-            per_track: dict[str, list[FaceObservation]] = {}
-            reviewed_count = 0
-            for index, frame in enumerate(container.decode(video=0)):
-                if targets is not None and index not in targets:
-                    continue
-                if targets is None and reviewed_count >= cfg.enrollment_frames:
-                    break
-                image = frame.to_ndarray(format="bgr24")
-                try:
-                    reviewed_count += 1
-                    found = runtime.detect(image)
-                    observations.extend(found)
-                    assigned = tracks.assign([observation.bbox for observation in found])
-                    for observation, track in zip(found, assigned):
-                        per_track.setdefault(track.track_id, []).append(observation)
-                finally:
-                    image.fill(0)
-            # Enrollment is for one student. A second tracked face must never be
-            # silently treated as background or folded into the student's vectors.
-            if len(per_track) > 1:
-                raise FaceServiceError(
-                    "MULTIPLE_IDENTITIES", "enrollment must contain one face identity"
-                )
-            viable = {
-                track_id: items
-                for track_id, items in per_track.items()
-                if sum(not quality_issues(item) for item in items) >= cfg.representative_vectors
-            }
-            if not viable:
-                if observations and all("LOW_LIGHT" in quality_issues(item) for item in observations):
-                    raise FaceServiceError("LOW_LIGHT", "enrollment video is too dark")
-                raise FaceServiceError(
-                    "INSUFFICIENT_QUALITY_FRAMES",
-                    f"need {cfg.representative_vectors} quality observations",
-                )
-            if len(viable) != 1:
-                raise FaceServiceError("MULTIPLE_IDENTITIES", "enrollment must contain one face identity")
-            vectors = select_representatives(next(iter(viable.values())), cfg.representative_vectors)
-            return {
-                "model": metadata.__dict__,
-                "reviewedFrames": reviewed_count,
-                "acceptedFrames": sum(not quality_issues(item) for item in observations),
-                "vectors": [vector.tolist() for vector in vectors],
-            }
+            stats, vectors = _extract_enrollment_vectors(body, runtime, cfg, metadata)
+            return {**stats, "vectors": [vector.tolist() for vector in vectors]}
         except FaceServiceError as exc:
             raise handle_error(exc) from exc
         except Exception as exc:
-            raise handle_error(FaceServiceError("INVALID_MEDIA", "video could not be decoded", 400)) from exc
+            raise handle_error(FaceServiceError("INTERNAL_ERROR", "enrollment failed", 500)) from exc
         finally:
-            if container is not None:
-                container.close()
-            clear_observations(observations)
             _clear_vectors({"temporary": vectors})
             if body is not None:
                 body[:] = b"\x00" * len(body)
 
-    @app.post("/api/v1/face/registration", status_code=201)
-    async def public_registration(
-        images: list[UploadFile] | None = File(None),
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, bool]:
-        student_id = public_student_id(authorization)
-        if student_id in registered_candidates:
-            raise HTTPException(status_code=409, detail={"code": "FACE_ALREADY_REGISTERED"})
-        runtime: InferenceModels | None = app.state.models
-        if runtime is None:
-            raise handle_error(FaceServiceError("MODEL_NOT_READY", "models are not loaded", 500))
-        decoded: list[np.ndarray] = []
-        observations: list[FaceObservation] = []
-        vectors: list[np.ndarray] = []
-        try:
-            decoded = await read_images(images or [])
-            for image in decoded:
-                observations.extend(runtime.detect(image))
-            if not observations:
-                raise FaceServiceError("NO_FACE", "no face was detected")
-            if all("LOW_LIGHT" in quality_issues(item) for item in observations):
-                raise FaceServiceError("LOW_LIGHT", "images are too dark")
-            vectors = select_representatives(observations, cfg.representative_vectors)
-            async with lock:
-                registered_candidates[student_id] = vectors
-            vectors = []
-            return {"success": True}
-        except FaceServiceError as exc:
-            raise handle_error(exc) from exc
-        except Exception as exc:
-            raise handle_error(FaceServiceError("INTERNAL_ERROR", "face registration failed", 500)) from exc
-        finally:
-            _clear_images(decoded)
-            clear_observations(observations)
-            _clear_vectors({"temporary": vectors})
-
-    @app.get("/api/v1/face/detect", status_code=201)
-    async def public_detect(
-        images: list[UploadFile] | None = File(None),
-        authorization: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        public_student_id(authorization)
-        runtime: InferenceModels | None = app.state.models
-        if runtime is None:
-            raise handle_error(FaceServiceError("MODEL_NOT_READY", "models are not loaded", 500))
-        if not registered_candidates:
-            raise handle_error(FaceServiceError("NO_FACE", "no registered face data is available"))
-        decoded: list[np.ndarray] = []
-        observations: list[FaceObservation] = []
-        try:
-            decoded = await read_images(images or [])
-            faces: list[dict[str, object]] = []
-            for image in decoded:
-                found = runtime.detect(image)
-                observations.extend(found)
-                for index, observation in enumerate(found):
-                    recognition = _recognize(observation, registered_candidates, cfg)
-                    faces.append({"faceIndex": index, "bbox": observation.bbox, "recognition": recognition})
-            if not faces:
-                raise FaceServiceError("NO_FACE", "no face was detected")
-            # The public legacy contract is scalar. Per-face results remain on the
-            # internal session endpoint, where the backend can handle multiple faces.
-            known = [item["recognition"] for item in faces if item["recognition"]["status"] == "KNOWN"]
-            if len(faces) == 1 and len(known) == 1:
-                try:
-                    value = int(known[0]["studentId"])
-                except (TypeError, ValueError) as exc:
-                    raise FaceServiceError(
-                        "STUDENT_ID_INVALID", "registered student ID is not an integer", 500
-                    ) from exc
-                return {"student_id": value, "success": True}
-            return {"student_id": None, "success": False}
-        except FaceServiceError as exc:
-            raise handle_error(exc) from exc
-        finally:
-            _clear_images(decoded)
-            clear_observations(observations)
-
-    @app.put("/internal/v1/face/sessions/{session_id}", dependencies=[Depends(auth)])
-    async def put_session(session_id: str, payload: SessionPayload) -> dict[str, str]:
+    @app.put(
+        "/internal/v1/face/sessions/{session_id}",
+        response_model=SessionReadyResponse,
+        dependencies=[Depends(auth)],
+        responses={
+            401: {"model": ErrorResponse, "description": "Missing or invalid service bearer token."},
+            422: {"model": ErrorResponse, "description": "Invalid or incompatible vector payload."},
+        },
+    )
+    async def put_session(
+        session_id: Annotated[str, Path(min_length=1)], payload: SessionPayload
+    ) -> SessionReadyResponse:
         try:
             incoming = ModelMetadata(
                 payload.model.model_id,
@@ -323,11 +254,34 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
                 old.tracker.reset()
                 _clear_vectors(old.candidates)
             sessions[session_id] = Session(candidates, TrackManager())
-        return {"status": "ready"}
+        return SessionReadyResponse(status="ready")
 
-    @app.post("/internal/v1/face/sessions/{session_id}/frames", dependencies=[Depends(auth)])
+    @app.post(
+        "/internal/v1/face/sessions/{session_id}/frames",
+        response_model=FrameResponse,
+        dependencies=[Depends(auth)],
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "image/jpeg": {"schema": {"type": "string", "format": "binary"}},
+                    "image/webp": {"schema": {"type": "string", "format": "binary"}},
+                },
+            }
+        },
+        responses={
+            400: {"model": ErrorResponse, "description": "Unsupported or undecodable image."},
+            401: {"model": ErrorResponse, "description": "Missing or invalid service bearer token."},
+            404: {"model": ErrorResponse, "description": "Recognition session is not active."},
+            413: {"model": ErrorResponse, "description": "Image exceeds the configured size limit."},
+            500: {"model": ErrorResponse, "description": "Unexpected inference error."},
+            503: {"model": ErrorResponse, "description": "Inference models are not ready."},
+        },
+    )
     async def frame(
-        session_id: str, request: Request, x_frame_id: Annotated[str, Header()] = ""
+        session_id: Annotated[str, Path(min_length=1)],
+        request: Request,
+        x_frame_id: Annotated[str, Header()] = "",
     ) -> dict[str, object]:
         runtime: InferenceModels | None = app.state.models
         session = sessions.get(session_id)
@@ -375,7 +329,9 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
                     {
                         "trackId": track.track_id,
                         "bbox": observation.bbox,
-                        "landmarks": observation.landmarks,
+                        "landmarks": [
+                            [float(x), float(y)] for x, y in observation.landmarks
+                        ],
                         "quality": {
                             "brightness": observation.brightness,
                             "sharpness": observation.sharpness,
@@ -396,40 +352,99 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
             if body is not None:
                 body[:] = b"\x00" * len(body)
 
-    @app.delete("/internal/v1/face/sessions/{session_id}", dependencies=[Depends(auth)])
-    async def delete_session(session_id: str) -> dict[str, str]:
+    @app.delete(
+        "/internal/v1/face/sessions/{session_id}",
+        response_model=SessionDeletedResponse,
+        dependencies=[Depends(auth)],
+        responses={401: {"model": ErrorResponse, "description": "Missing or invalid service bearer token."}},
+    )
+    async def delete_session(
+        session_id: Annotated[str, Path(min_length=1)],
+    ) -> SessionDeletedResponse:
         session = sessions.pop(session_id, None)
         if session:
             session.tracker.reset()
             _clear_vectors(session.candidates)
-        return {"status": "deleted"}
+        return SessionDeletedResponse(status="deleted")
 
     return app
+
+
+def _extract_enrollment_vectors(
+    body: bytearray,
+    runtime: InferenceModels,
+    cfg: Settings,
+    metadata: ModelMetadata,
+) -> tuple[dict[str, object], list[np.ndarray]]:
+    container = None
+    observations: list[FaceObservation] = []
+    vectors: list[np.ndarray] = []
+    transferred = False
+    try:
+        container = __import__("av").open(io.BytesIO(body), mode="r")
+        stream = container.streams.video[0]
+        frame_limit = max(1, min(cfg.enrollment_frames, 100))
+        vector_limit = max(1, min(cfg.representative_vectors, 20))
+        total = int(stream.frames or 0)
+        targets = _sample_indices(total, frame_limit) if total else None
+        tracks = TrackManager()
+        per_track: dict[str, list[FaceObservation]] = {}
+        reviewed_count = 0
+        for index, frame in enumerate(container.decode(video=0)):
+            if targets is not None and index not in targets:
+                continue
+            if targets is None and reviewed_count >= frame_limit:
+                break
+            image = frame.to_ndarray(format="bgr24")
+            try:
+                reviewed_count += 1
+                found = runtime.detect(image)
+                observations.extend(found)
+                assigned = tracks.assign([observation.bbox for observation in found])
+                for observation, track in zip(found, assigned):
+                    per_track.setdefault(track.track_id, []).append(observation)
+            finally:
+                image.fill(0)
+
+        # Enrollment is for one student. Never combine vectors from multiple faces.
+        if len(per_track) > 1:
+            raise FaceServiceError("MULTIPLE_IDENTITIES", "enrollment must contain one face identity")
+        viable = {
+            track_id: items
+            for track_id, items in per_track.items()
+            if sum(not quality_issues(item) for item in items) >= vector_limit
+        }
+        if not viable:
+            if observations and all("LOW_LIGHT" in quality_issues(item) for item in observations):
+                raise FaceServiceError("LOW_LIGHT", "enrollment video is too dark")
+            raise FaceServiceError(
+                "INSUFFICIENT_QUALITY_FRAMES",
+                f"need {vector_limit} quality observations",
+            )
+        vectors = select_representatives(next(iter(viable.values())), vector_limit)
+        stats = {
+            "model": metadata.__dict__,
+            "reviewedFrames": reviewed_count,
+            "acceptedFrames": sum(not quality_issues(item) for item in observations),
+        }
+        transferred = True
+        return stats, vectors
+    except FaceServiceError:
+        raise
+    except Exception as exc:
+        raise FaceServiceError("INVALID_MEDIA", "video could not be decoded", 400) from exc
+    finally:
+        if container is not None:
+            container.close()
+        clear_observations(observations)
+        if not transferred:
+            _clear_vectors({"temporary": vectors})
 
 
 def _sample_indices(total: int, count: int) -> set[int]:
     if total <= 0:
         return set()
     return set(np.linspace(0, total - 1, min(total, count), dtype=int).tolist())
-
-
-def _recognize(observation: FaceObservation, candidates: dict[str, list[np.ndarray]], cfg: Settings) -> dict[str, object]:
-    issues = quality_issues(observation)
-    if observation.embedding is None or issues or cfg.match_threshold is None or cfg.match_margin is None:
-        return {"status": "NOT_ATTEMPTED", "studentId": None, "score": None, "margin": None}
-    outcome = match_embedding(observation.embedding, candidates, cfg.match_threshold, cfg.match_margin)
-    return {
-        "status": outcome.status,
-        "studentId": outcome.student_id if outcome.status == "KNOWN" else None,
-        "score": outcome.score,
-        "margin": outcome.margin,
-    }
-
-
-def _clear_images(images: list[np.ndarray]) -> None:
-    for image in images:
-        image.fill(0)
-    images.clear()
 
 
 def _clear_vectors(groups: dict[str, list[np.ndarray]]) -> None:

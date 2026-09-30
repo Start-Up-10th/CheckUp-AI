@@ -8,7 +8,7 @@
 
 ## 작업 순서
 
-1. 작업을 시작하기 전에 `npm run harness:sync:upstream`으로 `ALL_harness`의 커밋된 하네스 파일을 `entire-AI`에 반영한다.
+1. 작업을 시작하기 전에 `npm run harness:sync:upstream`으로 `ALL_harness`를 `origin/main` 최신 상태로 맞춘다. 이 명령은 `entire-AI`에 파일을 복사하지 않는다.
 2. 얼굴 인식 기능은 `AI-feat`에서 `entire-AI`의 최신 하네스 규칙을 읽고 작업한다.
 3. AI 작업이 끝나면 `npm run ai:integrate`로 허용된 AI 파일만 `entire-AI`에 통합한다.
 4. 통합 후 `npm run harness:worklog -- "작업 내용과 검증 결과"`로 로컬 작업을 기록한다.
@@ -17,12 +17,9 @@
 
 ## 동기화 원칙
 
-- upstream 동기화는 `ALL_harness`에서 `origin/main`을 fetch한 뒤 tracked 파일을 `origin/main`으로 맞춘다. `ALL_harness`의 tracked 로컬 변경은 보존하지 않는다.
-- upstream 동기화는 하네스 원본에 없는 `entire-AI`의 AI 파일을 삭제하지 않는다.
+- 동기화는 `ALL_harness`에서 `origin/main`을 fetch한 뒤 `reset --hard`한다. `ALL_harness`의 tracked 로컬 변경은 보존되지 않는다.
+- 이 명령은 `entire-AI`에 파일을 복사하거나 삭제하지 않는다.
 - AI 통합은 `harness/ai-integration.json`에 등록된 파일만 복사한다.
-- `harness/hooks.mjs`, `harness/hooks.test.mjs`, `harness/*manifest.json`, `harness/local-worklog.md`는 `entire-AI` 통합 전용 파일이므로 upstream 동기화에서 보존한다.
-- `ALL_harness`에 없는 통합 전용 파일을 upstream 기준에 없다는 이유로 삭제하지 않는다. 동기화는 allowlist 경로만 복사하고 삭제 작업은 하지 않는다.
-- 훅 보존 목록을 변경하려면 `harness/sync-upstream.test.mjs`도 함께 갱신하고 `npm run harness:check`를 통과시킨다.
 - 로컬 작업 기록에는 원본 영상·프레임·얼굴 이미지·토큰·개인정보를 넣지 않는다.
 
 ## 금지 사항

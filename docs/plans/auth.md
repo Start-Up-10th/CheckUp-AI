@@ -1,35 +1,26 @@
-# auth — 인증 계획
+# auth — 인증 계약
 
-## 담당자·API
+## CheckUp-server main의 API
 
 - 담당자: 강민우
-- `POST /api/v1/auth/oauth/callback`
-- `GET /api/v1/auth/me`
-- `POST /api/v1/auth/logout`
-- `PUT /api/v1/auth/reissue`
+- `GET /api/v1/auth/login` — DataGSM 로그인으로 302 이동
+- `GET /api/v1/auth/callback?code={code}&state={state}` — 인가 코드 처리
+- `GET /api/v1/auth/me` — 현재 로그인 회원 조회
+- `POST /api/v1/auth/logout` — 세션 종료, 204 응답
 
-## 구현
+## 인증 방식
 
-- OAuth state·PKCE codeVerifier·콜백 검증, DataGSM 토큰 교환, 서버 세션/JWT 발급
-- `/auth/me`의 학생 ID·이름·학번·호실·관리자 여부·얼굴 등록 상태 반환
-- `DORMITORY_MANAGER` 기반 서버 권한 판정
-- 로그아웃 시 로그인 세션과 사용자 인증 세션 정리
-- Access Token 재발급 및 refresh token 만료·위조·재사용 거부
-- QR 로그인 복귀 시 원래 QR의 만료·종료·용도 재검사
+- DataGSM OAuth Authorization Code + PKCE의 state 검증과 토큰 교환은 Spring 서버가 처리한다.
+- DataGSM `accessToken`은 서버에서 userinfo를 조회하는 데 사용하며 브라우저 응답이나 AI 요청에 전달하지 않는다.
+- 로그인 성공 시 Spring이 회원 `name`, `role`을 응답하고 `SESSION` 쿠키 기반 로그인 세션을 만든다.
+- 브라우저는 보호된 Spring API에 `SESSION` 쿠키를 포함해 요청한다. 이 흐름은 애플리케이션 `Authorization: Bearer {accessToken}` 또는 `RefreshToken` 헤더를 사용하지 않는다.
+- AI는 Spring의 사용자 세션을 검증하지 않는다. Spring이 사용자를 인증한 뒤 AI 내부 경로에만 `Authorization: Bearer {FACE_SERVICE_TOKEN}`을 보낸다.
 
-## 계약 보완
+## 계약·검증
 
-- [ ] API 예시의 JSON 쉼표와 토큰 반환 타입을 정리한다.
-- [ ] `RefreshToken` 헤더와 일반 `Authorization` 헤더 규칙을 공통 계약에 기록한다.
-- [ ] 공통 오류 envelope와 `requestId`를 정한다.
-- [ ] OAuth secret·refresh token을 프론트 번들·HTTP 로그·fixture에서 제외한다.
-
-## 기준·검증
-
-- 요구사항: `REQ-AUTH-001~005`
-- 수용 시나리오: `ACC-AUTH-001~005`
-- 잘못된 state/codeVerifier, 만료 code, DataGSM 장애, 권한 부족을 구분한다.
-- 만료·위조·재사용 refresh token을 거부한다.
-- 학생이 다른 학생의 `/auth/me`·보호 API 범위를 얻지 못하는지 확인한다.
-
-선행 조건은 공통 인증·시간·오류 계약이다. DataGSM 실제 userinfo 필드·전체 명단은 아직 확인하지 않았다.
+- CheckUp-server 소스: [AuthController](https://github.com/Start-Up-10th/CheckUp-server/blob/main/src/main/java/com/checkup/checkup/domain/auth/controller/AuthController.java), [AuthService](https://github.com/Start-Up-10th/CheckUp-server/blob/main/src/main/java/com/checkup/checkup/domain/auth/service/AuthService.java), [SecurityConfig](https://github.com/Start-Up-10th/CheckUp-server/blob/main/src/main/java/com/checkup/checkup/global/security/SecurityConfig.java).
+- `/api/v1/auth/reissue`, 클라이언트 Access Token 발급, refresh-token 재발급은 현재 main 구현에 없으므로 AI/API 명세에 추가하지 않는다.
+- 잘못되거나 재사용된 state, 만료 code, DataGSM 장애, 비활성 계정, 권한 부족을 구분한다.
+- OAuth secret과 DataGSM 토큰을 브라우저 번들·응답·HTTP 로그·fixture에 넣지 않는다.
+- 학생이 다른 학생의 `/auth/me`나 보호 API 데이터 범위를 얻지 못하는지 확인한다.
+- 공통 오류 envelope와 `requestId`는 별도 계약으로 확정한다.

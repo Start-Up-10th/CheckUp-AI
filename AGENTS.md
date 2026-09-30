@@ -37,6 +37,7 @@
 - 기능 작업은 `.agents/skills/dorm-implement/SKILL.md`, 검증은 `dorm-verify`, 정책 변경은 `dorm-spec-update`를 사용한다.
 - Dockerfile·Compose·컨테이너 배포/장애 작업은 `.agents/skills/dorm-docker/SKILL.md`를 사용한다.
 - 작업 절차: [docs/workflow.md](docs/workflow.md).
+- 브랜치·커밋·PR 제목: [docs/conventions.md](docs/conventions.md).
 - 로컬 검사: `npm run harness:check`.
 - 자동 훅은 secret·위험 명령을 차단하고 하네스 관련 변경 뒤 검사를 안내한다. 훅 자체의 동작은 `harness/hooks.test.mjs`에서 검증한다.
 - 스킬 동기화: `npm run harness:sync` 후 검사. `.claude/skills`를 직접 수정하지 않는다.

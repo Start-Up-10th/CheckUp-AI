@@ -10,14 +10,16 @@
 | 인가 | `https://oauth.authorization.datagsm.kr/v1/oauth/authorize` |
 | 토큰 교환 | `https://oauth.authorization.datagsm.kr/v1/oauth/token` |
 | 사용자 정보 | `https://oauth.resource.datagsm.kr/userinfo` |
-| 개발 Redirect URI | `http://localhost:3000/callback` |
-| 운영 Redirect URI | `https://실제-서비스-주소/callback` |
+| 개발 Redirect URI | `http://localhost:8080/api/v1/auth/callback` (백엔드) |
+| 운영 Redirect URI | `https://실제-서비스-주소/api/v1/auth/callback` (백엔드) |
 
+Redirect URI는 백엔드 callback이다(DEC-016). 로그인 완료 후 웹 화면으로 복귀하는 방식은 웹·백엔드가 정한다.
 Client ID·Secret·scope와 정확한 운영 주소는 연동/배포 때 확보한다. 가짜 값을 실서비스 값으로 사용하지 않는다.
 실제 인증 없이 화면·도메인 로직 개발은 가능하며 mock 모드는 운영에서 사용하지 않는다.
 OAuth state, 콜백 검증, 토큰 교환과 세션 보호는 백엔드 책임이다.
 DataGSM 사용자 계정 상태는 `userinfo.status`로 받고 내부에서는 `accountStatus`로 구분한다.
 OAuth 요청과 callback 사이의 CSRF 검증값은 사용자 정보가 아닌 `oauthState`로 별도 관리한다.
+로그인 이후 웹의 인증 상태는 Spring `SESSION` 쿠키로 유지한다. DataGSM `accessToken`은 서버에서만 사용하고 브라우저나 AI 서비스에 전달하지 않는다.
 QR 스캔 후 로그인할 때 인증 대상의 용도와 QR 정보를 보존하되 로그인 완료 시 만료를 다시 검사한다.
 
 근거: SRC-DATAGSM, SRC-USER-UI.
@@ -35,6 +37,7 @@ QR 스캔 후 로그인할 때 인증 대상의 용도와 QR 정보를 보존하
 | 최상위 `objectType` | `subjectType` |
 | `student.role` | 학생 관리자 권한 판정 |
 | `teacher.department` | 교사 관리자 권한 판정 |
+| `student.grade`, `student.classNum`, `student.number` | 학년·반·번호 |
 
 DataGSM `userinfo`는 최상위 `id`, `email`, `role`, `status`, `objectType`과
 `student` 또는 `teacher` 중첩 객체를 반환한다. 학생의 식별자는 `student.id`이고
@@ -46,6 +49,7 @@ DataGSM 원본 DTO의 숫자형 `id`는 원본 경계에서 `Long`으로 처리�
 직접 연결하지 않는다. 서비스 내부 Principal은 원본 DTO와 분리해 다음 정보를 갖는다.
 학생은 `studentId`, `studentNumber`, `name`, `dormitoryRoom`, `accountStatus`를 매핑하고,
 교사는 학생 식별자와 호실을 갖지 않으며 `name`, `accountStatus`를 매핑한다.
+`accountStatus`와 `subjectType`은 로그인할 때 검증에 쓰며 DB에 저장하지 않는다.
 
 층은 유효한 `dormitoryRoom`의 `floor(dormitoryRoom / 100)`으로 계산한다. 소수 나눗셈 결과를 층으로 쓰지 않는다.
 전체 학생은 기숙사생이다. 호실 구성과 인원은 DataGSM 배정 정보를 기준으로 만든다.
@@ -62,11 +66,12 @@ DataGSM 원본 DTO의 숫자형 `id`는 원본 경계에서 `Long`으로 처리�
 
 사감과 자치위원은 동일한 관리자 권한을 가진다. 학생 관리자 여부는
 `objectType == STUDENT`, `student != null`인 경우의 `student.role`로 판별한다.
-`student.role`이 `DORMITORY_MANAGER` 또는 `STUDENT_COUNCIL`이면 관리자다.
+`student.role`이 `DORMITORY_MANAGER`(기숙사 자치위원)이면 관리자다. 학생회(`STUDENT_COUNCIL`)는 관리자가 아니다.
 사감 선생님은 `objectType == TEACHER`, `teacher != null`인 경우의
 `teacher.department == DORMITORY`이면 관리자다.
 최상위 `role == ADMIN`은 DataGSM 계정 역할일 뿐 서비스 관리자 권한으로 자동 승격하지 않는다.
 `status != ACTIVE` 계정, 지원하지 않는 `objectType`, 해당 중첩 객체가 없는 응답은 인증을 거부한다.
+`student.role`이 없는 학생과 `teacher.department != DORMITORY`인 교사도 인증을 거부한다.
 QR 생성·얼굴 인식 운영·관리자 전개도·수동 출석 수정·봉사 관리·공지 변경은 관리자 전용이다.
 학생은 본인과 본인 호실 화면에서 허용된 정보만 읽는다. 다른 학생 봉사 정보나 얼굴 벡터는 볼 수 없다.
 관리자 화면을 숨기는 것뿐 아니라 API에서도 역할을 검증한다. 로그인하지 않으면 로그인으로 이동한다.
