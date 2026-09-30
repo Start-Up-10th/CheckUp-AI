@@ -19,6 +19,13 @@
 - 관리자 카메라의 목적별 인식 세션, 다수 얼굴 트랙, unknown, 실패 안내
 - AI 결과만 반환하고 권위 있는 출석 확정은 Spring이 담당
 
+## AI authentication boundary — issue #6
+
+- `/internal/*` requests validate configured `FACE_SERVICE_TOKEN` before route validation or body processing; route dependencies keep the OpenAPI security declaration.
+- Browser `SESSION` cookies and DataGSM access tokens are rejected on every internal route. Health endpoints remain public.
+- Regression matrix: `tests/face_service/test_api.py` covers missing, wrong, DataGSM, and SESSION-only credentials across all four protected methods, including early rejection and secret-free errors.
+- OAuth/AI end-to-end scenario `ACC-AUTH-001` stays unverified until Spring integration is implemented and exercised.
+
 ## 계약 보완
 
 - [ ] Spring 공개 등록 API는 `SESSION` 세션에서 학생을 확인하고 동의·중복 여부를 검사한다. 실제 Spring API 경로와 request/response는 server 구현자와 별도 계약한다.

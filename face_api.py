@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import secrets
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Annotated, Literal
@@ -9,6 +10,7 @@ from typing import Annotated, Literal
 import cv2
 import numpy as np
 from fastapi import Depends, FastAPI, Header, HTTPException, Path, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
@@ -133,18 +135,34 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
     service_bearer = HTTPBearer(
         auto_error=False,
         scheme_name="serviceBearer",
-        description="Private Spring-to-AI service token. This is not a DataGSM OAuth access token.",
+        description=(
+            "Private Spring-to-AI service token. Browser SESSION cookies and DataGSM OAuth "
+            "access tokens are not accepted."
+        ),
     )
+
+    def has_valid_service_token(credentials: HTTPAuthorizationCredentials | None) -> bool:
+        return bool(
+            cfg.service_token
+            and credentials is not None
+            and secrets.compare_digest(
+                credentials.credentials.encode("utf-8"), cfg.service_token.encode("utf-8")
+            )
+        )
 
     async def auth(
         credentials: HTTPAuthorizationCredentials | None = Depends(service_bearer),
     ) -> None:
-        if (
-            not cfg.service_token
-            or credentials is None
-            or credentials.credentials != cfg.service_token
-        ):
+        if not has_valid_service_token(credentials):
             raise HTTPException(status_code=401, detail={"code": "UNAUTHORIZED"})
+
+    @app.middleware("http")
+    async def authenticate_internal_requests(request: Request, call_next):
+        if request.url.path.startswith("/internal/"):
+            credentials = await service_bearer(request)
+            if not has_valid_service_token(credentials):
+                return JSONResponse(status_code=401, content={"detail": {"code": "UNAUTHORIZED"}})
+        return await call_next(request)
 
     def handle_error(exc: FaceServiceError) -> HTTPException:
         return HTTPException(
