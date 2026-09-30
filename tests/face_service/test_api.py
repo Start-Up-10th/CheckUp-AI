@@ -201,10 +201,10 @@ def test_internal_routes_require_service_bearer_before_processing_request(
     app = create_app(settings, models)
     kwargs = dict(request_kwargs)
     headers = {**kwargs.pop("headers", {}), **credential_headers}
-    if cookies is not None:
-        kwargs["cookies"] = cookies
 
     with TestClient(app) as client:
+        if cookies is not None:
+            client.cookies.set("SESSION", cookies["SESSION"])
         response = client.request(method, path, headers=headers, **kwargs)
 
     assert response.status_code == 401
