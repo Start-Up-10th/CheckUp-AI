@@ -11,6 +11,7 @@
     "docs/sources/admin-home.png", "docs/sources/room-dialog.png", "docs/sources/camera-page.png", "docs/sources/camera-fullscreen.png",
     "contracts/README.md", "contracts/notification.openapi.yaml", "web/AGENTS.md", "web/CLAUDE.md", "server/AGENTS.md", "server/CLAUDE.md",
     "ai/AGENTS.md", "ai/CLAUDE.md", "infra/AGENTS.md", "infra/CLAUDE.md", "infra/.env.example",
+    "infra/face-ai.env.example", "infra/download_models.py", "infra/healthcheck.py", "Dockerfile", ".dockerignore",
     "tests/acceptance/README.md", "tests/acceptance/scenarios.json",
     "harness/check.mjs", "harness/check.test.mjs", "harness/hooks.mjs", "harness/hooks.test.mjs", "harness/sync-skills.mjs",
     "harness/upstream-manifest.json", "harness/ai-integration.json", "harness/sync-upstream.mjs", "harness/sync-upstream.test.mjs", "harness/integrate-ai.mjs", "harness/log-local-work.mjs", "harness/INTEGRATION.md", "harness/local-worklog.md",

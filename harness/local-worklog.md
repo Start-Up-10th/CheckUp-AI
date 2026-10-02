@@ -33,3 +33,7 @@ npm run harness:worklog -- "작업 내용과 검증 결과"
 - 2026-09-30: CheckUp-server main의 DataGSM OAuth Authorization Code+PKCE와 SESSION cookie 인증에 맞춰 AI 사용자 access-token 프로토타입 경로/설정을 제거하고 모든 얼굴 API를 Spring→AI FACE_SERVICE_TOKEN bearer 내부 계약으로 제한. FastAPI Swagger와 OpenAPI를 동영상 raw body·벡터 응답·에러 응답 타입에 맞추고 인증/얼굴 계획 문서를 갱신. AI 테스트 12 통과, Ruff 통과, OpenAPI YAML 파싱 및 harness:check(38 요구사항·38 시나리오/23 테스트) 통과. 실제 CheckUp-server→AI 얼굴 API 연동은 main에 없어 미검증.
 
 - 2026-10-01: 얼굴 좌표 경계·추론 오류 분류·FastAPI 세션 TTL, Spring 404 복구 잠금·삭제 재시도·프레임 선검증·저조도 오류 매핑 보완. AI 테스트 31개, Ruff, 양쪽 harness 검사 통과; Spring 얼굴 단위 테스트 25개 통과. DB 통합 테스트는 기존 Flyway V3 체크섬 불일치로 제외.
+
+- 2026-10-03: FastAPI CPU 컨테이너 이미지와 모델 build-time SHA-256 검증 다운로드, readiness healthcheck, 로컬 env 예시 추가. Docker 이미지 빌드와 컨테이너 실행/readiness는 미실행.
+
+- 2026-10-03: README에 프론트→Spring 인증·얼굴 API 연결, 미설정 CORS 전제, AI 내부 배포·환경 변수·health·단일 worker 조건과 DevOps 순서 문서화. 문서 변경이며 테스트/배포 미실행.
