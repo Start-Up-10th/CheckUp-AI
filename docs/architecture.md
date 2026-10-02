@@ -8,9 +8,10 @@
 학생/관리자 브라우저 · Next.js
         │ 인증된 웹 요청 / 관리자 카메라 입력
         ▼
-Spring API ── DataGSM OAuth / 확인된 학교 데이터 API
+Spring API ── DataGsmOAuthClient ── DataGSM OAuth/userinfo
+        └── DataGsmStudentClient ── DataGSM 학생 OpenAPI
    │    │
-   │    └── Redis: 만료 세션·QR·일시 처리 상태
+   │    └── Redis: 로그인 세션·OAuth state·QR·일시 처리 상태
    ├── PostgreSQL: 학생·동의·벡터 참조·현재 출석·공지·봉사
    └── FastAPI: MediaPipe 검출/정렬 + 검증된 신원 임베딩 모델
 ```
@@ -29,7 +30,8 @@ Claude와 Codex의 차이는 진입 파일/스킬 검색 경로에 한정한다.
 
 | 개념 | 필수 의미 |
 | --- | --- |
-| Student | 검증된 DataGSM 식별자·이름·학년·호실 |
+| Member | DataGSM 최상위 `id`, 이름, 서비스 역할(`STUDENT`/`ADMIN`). 학생·교사 공통 로그인 주체 |
+| Student | Member 1:1. 학년·반·번호·학번·호실 |
 | Consent | 필수 두 항목, 공지 알림 선택과 동의 버전/시각 |
 | FaceTemplate | 학생별 약 20개 대표 임베딩, 모델 버전; 원본 없음 |
 | RecognitionSession | 관리자·기기·페이지·용도·수명 |
@@ -43,12 +45,14 @@ Claude와 Codex의 차이는 진입 파일/스킬 검색 경로에 한정한다.
 
 ## 구현 전 기술 확인
 
-1. DataGSM의 실제 userinfo 구조, 전체 학생 명단 경로, 기숙사 퇴사/졸업 신호.
+1. DataGSM 학생 OpenAPI의 실제 키 권한·페이지네이션 응답·기숙사 퇴사/졸업 신호.
 2. MediaPipe 이후 학생 신원을 비교할 임베딩 모델·라이선스·정확도·실장 성능.
 3. 웹 오프라인 추론·벡터 캐시·기기 시계 보정의 실행 가능성.
 4. GSM SV 실제 서비스 주소·TLS·기기에서의 접속 경로·운영 VM 만료 여부.
 
-각 항목은 [기술 결정](decisions.md)에 담당자·검증 근거를 남긴다. 미확인 사실을 모의 구현으로 숨기지 않는다.
+DataGSM `userinfo` 구조와 내부 매핑은 DEC-002의 사용자 결정으로 고정한다. 학생 OpenAPI의
+실제 권한·페이지네이션·상태 신호처럼 아직 연동 확인이 필요한 항목은 [기술 결정](decisions.md)에
+담당자·검증 근거를 남긴다. 미확인 사실을 모의 구현으로 숨기지 않는다.
 1~4 확인을 기다리는 동안 출석 도메인·UI·QR 계약·테스트 개발을 진행할 수 있다.
 
 ## 안정성 불변 조건

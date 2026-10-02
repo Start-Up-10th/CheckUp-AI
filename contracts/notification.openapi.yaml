@@ -1,0 +1,170 @@
+openapi: 3.1.0
+info:
+  title: CheckUp 알림 API
+  version: 1.0.0
+  description: |
+    학생 본인의 웹 내부 알림 조회·읽음 API다. 제공자는 CheckUp-server, 소비자는 학생 웹 홈 헤더 벨·사이드바 알림과 알림 목록 화면이다.
+    정책은 REQ-COM-005, 세부는 [알림 계획](../docs/plans/notification.md)과 DEC-019를 따른다.
+
+    - 인증: `SESSION` 쿠키(DEC-016). 웹은 `credentials: "include"`로 호출한다.
+    - 로그인하지 않은 요청은 Spring Security가 401 `ErrorResponse`(`UNAUTHORIZED`)로 막는다.
+    - 로그인한 학생의 알림만 다룬다. 학생 id는 받지 않는다.
+    - 알림을 만드는 API는 없다. 서버가 출석 성공·당일 봉사자 지정·공지 등록 처리 안에서 만든다.
+    - 시각은 모두 ISO-8601 UTC 문자열이다.
+servers:
+  - url: /
+    description: 웹과 같은 출처. 웹은 `/api/*`를 Spring 서버로 프록시한다.
+security:
+  - sessionCookie: []
+tags:
+  - name: 알림
+    description: 학생 본인의 웹 내부 알림(REQ-COM-005).
+paths:
+  /api/v1/notifications:
+    get:
+      tags: [알림]
+      summary: 본인 알림 목록
+      description: |
+        본인 알림 최근 50개를 최신순으로 돌려준다. 페이지는 없다.
+        읽음 상태는 바꾸지 않는다. 웹은 알림 목록 화면에 들어오면 `POST /api/v1/notifications/read`를 따로 호출한다.
+        지난 운영일의 `ATTENDANCE` 알림은 매일 08:00 KST에 지워진다(DEC-009).
+      operationId: getNotifications
+      responses:
+        "200":
+          description: 알림 목록
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+              example:
+                hasUnread: true
+                notifications:
+                  - id: 5
+                    type: ATTENDANCE
+                    message: 자습실 출석이 완료됐어요
+                    createdAt: "2026-09-30T03:00:00Z"
+                    read: false
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/MissingStudentInfo"
+  /api/v1/notifications/unread:
+    get:
+      tags: [알림]
+      summary: 읽지 않은 알림 여부
+      description: 모바일 홈 헤더 벨 빨간 점과 노트북 사이드바 알림 강조에 쓴다. 숫자는 주지 않는다.
+      operationId: hasUnreadNotifications
+      responses:
+        "200":
+          description: 미확인 여부
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/MissingStudentInfo"
+  /api/v1/notifications/read:
+    post:
+      tags: [알림]
+      summary: 본인 알림 전체 읽음
+      description: 본인의 읽지 않은 알림을 모두 읽음으로 바꾼다. 이미 읽은 알림의 읽은 시각은 바꾸지 않는다. 본문은 없다.
+      operationId: readAllNotifications
+      responses:
+        "204":
+          description: 읽음 처리(읽지 않은 알림이 없어도 204)
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/MissingStudentInfo"
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: SESSION
+  responses:
+    Unauthenticated:
+      description: 로그인하지 않았다. Spring Security가 `UNAUTHORIZED`로 응답한다.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: UNAUTHORIZED
+            message: 로그인이 필요합니다.
+    MissingStudentInfo:
+      description: 학생 정보가 없는 계정(교사 등). 기숙사 자치위원은 학생이라 본인 알림을 볼 수 있다.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: MISSING_STUDENT_INFO
+            message: 학생 정보가 없습니다.
+  schemas:
+    NotificationListResponse:
+      type: object
+      required: [hasUnread, notifications]
+      properties:
+        hasUnread:
+          type: boolean
+          description: 읽지 않은 알림이 하나라도 있으면 true
+        notifications:
+          type: array
+          description: 최신순, 최대 50개
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/NotificationResponse"
+    NotificationResponse:
+      type: object
+      required: [id, type, message, createdAt, read]
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          type: string
+          enum: [ATTENDANCE, VOLUNTEER, NOTICE]
+          description: |
+            `ATTENDANCE` 출석 완료, `VOLUNTEER` 당일 봉사자 지정(DEC-020), `NOTICE` 새 공지(공지 알림 수신 동의 학생만).
+            현재 서버가 만드는 유형은 `ATTENDANCE`뿐이다. 나머지는 봉사·공지 기능 구현 때 연결한다.
+        message:
+          type: string
+          description: 서버가 만든 표시 문구. 웹은 그대로 표시한다.
+        createdAt:
+          type: string
+          format: date-time
+          description: 만든 시각(UTC). 웹은 이 값으로 상대 시각을 계산한다.
+        read:
+          type: boolean
+          description: 읽었으면 true
+    UnreadResponse:
+      type: object
+      required: [hasUnread]
+      properties:
+        hasUnread:
+          type: boolean
+          description: 읽지 않은 알림이 하나라도 있으면 true
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: 서버 `ErrorCode` 이름
+        message:
+          type: string
+          description: 오류 코드의 기본 메시지. 예외 원문을 담지 않는다.
+        errors:
+          type: array
+          description: 요청 값 검증 실패 때만 있다. 거부된 입력값은 담지 않는다.
+          items:
+            type: object
+            required: [field, reason]
+            properties:
+              field:
+                type: string
+              reason:
+                type: string

@@ -19,7 +19,6 @@ Client ID·Secret·scope와 정확한 운영 주소는 연동/배포 때 확보�
 OAuth state, 콜백 검증, 토큰 교환과 세션 보호는 백엔드 책임이다.
 DataGSM 사용자 계정 상태는 `userinfo.status`로 받고 내부에서는 `accountStatus`로 구분한다.
 OAuth 요청과 callback 사이의 CSRF 검증값은 사용자 정보가 아닌 `oauthState`로 별도 관리한다.
-로그인 이후 웹의 인증 상태는 Spring `SESSION` 쿠키로 유지한다. DataGSM `accessToken`은 서버에서만 사용하고 브라우저나 AI 서비스에 전달하지 않는다.
 QR 스캔 후 로그인할 때 인증 대상의 용도와 QR 정보를 보존하되 로그인 완료 시 만료를 다시 검사한다.
 
 근거: SRC-DATAGSM, SRC-USER-UI.
@@ -44,11 +43,6 @@ DataGSM `userinfo`는 최상위 `id`, `email`, `role`, `status`, `objectType`과
 `student.studentNumber`는 화면에 표시하는 학번이다. 둘을 같은 필드로 취급하지 않는다.
 DataGSM 원본 DTO의 숫자형 `id`는 원본 경계에서 `Long`으로 처리하고, 기존 내부 계약이
 문자열이면 어댑터에서만 문자열로 변환한다.
-
-Spring은 DataGSM `student.id`를 문자열 canonical `studentId`로 바꿔 AI 얼굴 API에 전달한다.
-AI는 이를 불투명한 식별자로 보존해 `KNOWN` 응답에 그대로 반환한다. AI는 이 값을 CheckUp
-DB의 학생 기본 키나 화면 표시용 `studentNumber`로 해석하지 않는다. 출석 DB 키 변환은 Spring이
-canonical ID로 학생을 조회해 처리한다.
 
 최상위 `role`은 DataGSM 계정 역할(`USER`/`ADMIN`)이며 서비스의 사감 관리자 권한과
 직접 연결하지 않는다. 서비스 내부 Principal은 원본 DTO와 분리해 다음 정보를 갖는다.
