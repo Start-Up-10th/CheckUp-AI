@@ -9,6 +9,9 @@ the service returns recognition results to the backend contract.
 - A frame with two faces produces two independent `faces[]` results and stable track IDs.
 - A below-threshold or below-margin match is `UNKNOWN` with `studentId: null`.
 - Candidate model metadata mismatch is rejected; vectors are not compared across model versions.
+- Bounding boxes and pixel landmarks are clipped to the decoded frame before returning; malformed non-finite coordinates return a JSON inference error.
+- Frame and enrollment inference exceptions return JSON `500 INTERNAL_ERROR`; undecodable enrollment media remains `400 INVALID_MEDIA`.
+- Idle recognition sessions expire on schedule, never expire while a frame is in flight, and clear cached candidate vectors when removed.
 - Enrollment samples at most 100 frames and returns exactly 20 normalized representative vectors
   only after enough quality observations from one tracked identity.
 - Low-light, blur, too-small, and extreme-pose observations are not used for recognition.

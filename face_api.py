@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import io
 import secrets
+import time
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Annotated, Literal
@@ -114,13 +116,58 @@ class FrameResponse(BaseModel):
 class Session:
     candidates: dict[str, list[np.ndarray]]
     tracker: TrackManager
+    last_activity_at: float
+    in_flight: int = 0
+    closing: bool = False
 
 
-def create_app(settings: Settings | None = None, models: InferenceModels | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    models: InferenceModels | None = None,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> FastAPI:
     cfg = settings or Settings()
     metadata = ModelMetadata(version=cfg.model_version)
     sessions: dict[str, Session] = {}
     lock = asyncio.Lock()
+
+    def discard_session(session: Session) -> None:
+        session.tracker.reset()
+        _clear_vectors(session.candidates)
+
+    def cleanup_expired_sessions(now: float | None = None) -> int:
+        current = monotonic() if now is None else now
+        expired = [
+            session_id
+            for session_id, session in sessions.items()
+            if session.in_flight == 0
+            and current - session.last_activity_at >= cfg.session_idle_seconds
+        ]
+        for session_id in expired:
+            session = sessions.pop(session_id)
+            discard_session(session)
+        return len(expired)
+
+    def acquire_session(session_id: str) -> Session | None:
+        session = sessions.get(session_id)
+        if session is None or session.closing:
+            return None
+        current = monotonic()
+        if session.in_flight == 0 and current - session.last_activity_at >= cfg.session_idle_seconds:
+            sessions.pop(session_id, None)
+            discard_session(session)
+            return None
+        session.in_flight += 1
+        session.last_activity_at = current
+        return session
+
+    def release_session(session_id: str, session: Session) -> None:
+        session.in_flight = max(0, session.in_flight - 1)
+        session.last_activity_at = monotonic()
+        if session.closing and session.in_flight == 0:
+            if sessions.get(session_id) is session:
+                sessions.pop(session_id, None)
+            discard_session(session)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -129,13 +176,27 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
             runtime = InferenceModels(str(cfg.landmarker_path), str(cfg.embedding_model_path), metadata)
         app.state.models = runtime
         app.state.sessions = sessions
-        yield
-        for session in sessions.values():
-            session.tracker.reset()
-            _clear_vectors(session.candidates)
-        sessions.clear()
-        if runtime is not None and models is None:
-            runtime.close()
+        app.state.cleanup_expired_sessions = cleanup_expired_sessions
+
+        async def reap_expired_sessions() -> None:
+            while True:
+                await asyncio.sleep(cfg.session_cleanup_interval_seconds)
+                cleanup_expired_sessions()
+
+        cleanup_task = asyncio.create_task(reap_expired_sessions())
+        try:
+            yield
+        finally:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                pass
+            for session in sessions.values():
+                discard_session(session)
+            sessions.clear()
+            if runtime is not None and models is None:
+                runtime.close()
 
     app = FastAPI(title="Dormitory Face Inference Service", version="0.1.0", lifespan=lifespan)
 
@@ -278,7 +339,7 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
             if old is not None:
                 old.tracker.reset()
                 _clear_vectors(old.candidates)
-            sessions[session_id] = Session(candidates, TrackManager())
+            sessions[session_id] = Session(candidates, TrackManager(), monotonic())
         return SessionReadyResponse(status="ready")
 
     @app.post(
@@ -309,13 +370,13 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
         x_frame_id: Annotated[str, Header()] = "",
     ) -> dict[str, object]:
         runtime: InferenceModels | None = app.state.models
-        session = sessions.get(session_id)
         if runtime is None:
             raise handle_error(FaceServiceError("MODEL_NOT_READY", "models are not loaded", 503))
-        if session is None:
-            raise handle_error(FaceServiceError("SESSION_NOT_FOUND", "session is not active", 404))
         if request.headers.get("content-type", "").split(";", 1)[0] not in {"image/jpeg", "image/webp"}:
             raise handle_error(FaceServiceError("INVALID_MEDIA", "expected JPEG or WebP image", 400))
+        session = acquire_session(session_id)
+        if session is None:
+            raise handle_error(FaceServiceError("SESSION_NOT_FOUND", "session is not active", 404))
         body: bytearray | None = None
         image: np.ndarray | None = None
         observations: list[FaceObservation] = []
@@ -325,9 +386,15 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
             if image is None:
                 raise FaceServiceError("INVALID_MEDIA", "frame is not a valid image", 400)
             observations = runtime.detect(image)
-            tracks = session.tracker.assign([observation.bbox for observation in observations])
+            height, width = image.shape[:2]
+            boxes = [_response_bbox(observation.bbox) for observation in observations]
+            landmarks = [
+                _response_landmarks(observation.landmarks, width, height)
+                for observation in observations
+            ]
+            tracks = session.tracker.assign(boxes)
             results = []
-            for observation, track in zip(observations, tracks):
+            for index, (observation, track) in enumerate(zip(observations, tracks, strict=True)):
                 issues = quality_issues(observation)
                 if observation.embedding is None or issues or not session.tracker.observe_quality(track):
                     recognition = {"status": "NOT_ATTEMPTED", "studentId": None, "score": None, "margin": None}
@@ -353,10 +420,8 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
                 results.append(
                     {
                         "trackId": track.track_id,
-                        "bbox": observation.bbox,
-                        "landmarks": [
-                            [float(x), float(y)] for x, y in observation.landmarks
-                        ],
+                        "bbox": boxes[index],
+                        "landmarks": landmarks[index],
                         "quality": {
                             "brightness": observation.brightness,
                             "sharpness": observation.sharpness,
@@ -370,12 +435,15 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
             return {"frameId": x_frame_id, "faces": results}
         except FaceServiceError as exc:
             raise handle_error(exc) from exc
+        except Exception as exc:
+            raise handle_error(FaceServiceError("INTERNAL_ERROR", "frame inference failed", 500)) from exc
         finally:
             if image is not None:
                 image.fill(0)
             clear_observations(observations)
             if body is not None:
                 body[:] = b"\x00" * len(body)
+            release_session(session_id, session)
 
     @app.delete(
         "/internal/v1/face/sessions/{session_id}",
@@ -386,10 +454,12 @@ def create_app(settings: Settings | None = None, models: InferenceModels | None 
     async def delete_session(
         session_id: Annotated[str, Path(min_length=1)],
     ) -> SessionDeletedResponse:
-        session = sessions.pop(session_id, None)
+        session = sessions.get(session_id)
         if session:
-            session.tracker.reset()
-            _clear_vectors(session.candidates)
+            session.closing = True
+            if session.in_flight == 0:
+                sessions.pop(session_id, None)
+                discard_session(session)
         return SessionDeletedResponse(status="deleted")
 
     return app
@@ -406,16 +476,20 @@ def _extract_enrollment_vectors(
     vectors: list[np.ndarray] = []
     transferred = False
     try:
-        container = __import__("av").open(io.BytesIO(body), mode="r")
-        stream = container.streams.video[0]
+        av = __import__("av")
+        try:
+            container = av.open(io.BytesIO(body), mode="r")
+            stream = container.streams.video[0]
+            total = int(stream.frames or 0)
+        except (av.error.FFmpegError, EOFError, IndexError, ValueError) as exc:
+            raise FaceServiceError("INVALID_MEDIA", "video could not be decoded", 400) from exc
         frame_limit = max(1, min(cfg.enrollment_frames, 100))
         vector_limit = max(1, min(cfg.representative_vectors, 20))
-        total = int(stream.frames or 0)
         targets = _sample_indices(total, frame_limit) if total else None
         tracks = TrackManager()
         per_track: dict[str, list[FaceObservation]] = {}
         reviewed_count = 0
-        for index, frame in enumerate(container.decode(video=0)):
+        for index, frame in enumerate(_decoded_video_frames(container, av)):
             if targets is not None and index not in targets:
                 continue
             if targets is None and reviewed_count >= frame_limit:
@@ -457,13 +531,48 @@ def _extract_enrollment_vectors(
     except FaceServiceError:
         raise
     except Exception as exc:
-        raise FaceServiceError("INVALID_MEDIA", "video could not be decoded", 400) from exc
+        raise FaceServiceError("INTERNAL_ERROR", "enrollment inference failed", 500) from exc
     finally:
         if container is not None:
             container.close()
         clear_observations(observations)
         if not transferred:
             _clear_vectors({"temporary": vectors})
+
+
+def _decoded_video_frames(container, av):
+    try:
+        yield from container.decode(video=0)
+    except (av.error.FFmpegError, EOFError) as exc:
+        raise FaceServiceError("INVALID_MEDIA", "video could not be decoded", 400) from exc
+
+
+def _response_bbox(bbox: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    """Return a frame-normalized (left, top, width, height) box clipped to the image."""
+    if len(bbox) != 4 or not np.isfinite(bbox).all():
+        raise FaceServiceError("INTERNAL_ERROR", "inference returned invalid face coordinates", 500)
+    x, y, width, height = (float(value) for value in bbox)
+    if width < 0 or height < 0:
+        raise FaceServiceError("INTERNAL_ERROR", "inference returned invalid face coordinates", 500)
+    left = float(np.clip(x, 0.0, 1.0))
+    top = float(np.clip(y, 0.0, 1.0))
+    right = float(np.clip(x + width, left, 1.0))
+    bottom = float(np.clip(y + height, top, 1.0))
+    return left, top, right - left, bottom - top
+
+
+def _response_landmarks(
+    landmarks: tuple[tuple[float, float], ...], width: int, height: int
+) -> list[list[float]]:
+    """Keep landmark coordinates in pixels and clip them to the decoded image bounds."""
+    points = np.asarray(landmarks, dtype=np.float64)
+    if points.size == 0:
+        return []
+    if points.ndim != 2 or points.shape[1] != 2 or not np.isfinite(points).all():
+        raise FaceServiceError("INTERNAL_ERROR", "inference returned invalid landmarks", 500)
+    points[:, 0] = np.clip(points[:, 0], 0.0, float(width))
+    points[:, 1] = np.clip(points[:, 1], 0.0, float(height))
+    return points.tolist()
 
 
 def _sample_indices(total: int, count: int) -> set[int]:

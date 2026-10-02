@@ -22,6 +22,12 @@ QR 출석 API 계약은 [qr.openapi.yaml](qr.openapi.yaml)에 기록한다.
 - Spring에서 AI를 호출하는 경우에만 `FACE_SERVICE_TOKEN` Bearer 인증을 사용한다. DataGSM access token은 서버 안에서 userinfo를 조회하는 용도이며 AI 호출용이 아니다.
 - 공통 오류 envelope는 아직 없다.
 
+## 알림 계약
+
+- [notification.openapi.yaml](notification.openapi.yaml): `GET /api/v1/notifications`, `GET /api/v1/notifications/unread`, `POST /api/v1/notifications/read`를 정의한다.
+- 학생 본인의 알림만 조회·읽음 처리한다. 목록은 최신순 최대 50개이며, 조회 요청은 읽음 상태를 바꾸지 않는다.
+- 정책은 REQ-COM-005·DEC-019를 따른다. 알림 유형은 `ATTENDANCE`, `VOLUNTEER`, `NOTICE`며, 생성 규칙과 보관 기준은 [알림 계획](../docs/plans/notification.md)에 둔다.
+
 계약에 반드시 표현할 내용:
 
 - 현재 `/auth/me` 응답은 역할만 포함한다. 동의/등록 상태와 학생 데이터 범위는 저장·권한 검증 구현 후 확장 계약에 추가하며, 현행 응답으로 약속하지 않는다.

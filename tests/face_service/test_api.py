@@ -47,6 +47,18 @@ class EnrollmentFakeModels:
         pass
 
 
+class BoundaryModels(EnrollmentFakeModels):
+    def detect(self, image: np.ndarray) -> list[FaceObservation]:
+        height, width = image.shape[:2]
+        return [FaceObservation((0.95, 0.9, 0.2, 0.2), ((-2.0, height + 2.0),), None,
+                                100, 100, "frontal")]
+
+
+class FailingModels(EnrollmentFakeModels):
+    def detect(self, _image: np.ndarray) -> list[FaceObservation]:
+        raise RuntimeError("synthetic inference failure")
+
+
 def make_test_mp4(frame_count: int = 3) -> bytes:
     import av
 
@@ -147,6 +159,122 @@ def test_candidate_rejects_numeric_student_id():
             json=payload,
         )
     assert response.status_code == 422
+
+
+def test_frame_coordinates_are_clipped_to_image_bounds():
+    settings = Settings(
+        landmarker_path=Path("missing-landmarker.task"),
+        embedding_model_path=Path("missing-embedding.xml"),
+        service_token="test-token",
+    )
+    app = create_app(settings, BoundaryModels())
+    image = np.zeros((64, 64, 3), dtype=np.uint8)
+    _, encoded = cv2.imencode(".jpg", image)
+    headers = {"Authorization": "Bearer test-token"}
+    payload = {
+        "model": {
+            "model_id": "openvino/face-reidentification-retail-0095",
+            "version": settings.model_version,
+            "dimension": 256,
+            "normalization": "l2",
+        },
+        "candidates": [],
+    }
+    with TestClient(app) as client:
+        assert client.put("/internal/v1/face/sessions/bounds", headers=headers, json=payload).status_code == 200
+        response = client.post(
+            "/internal/v1/face/sessions/bounds/frames",
+            headers={**headers, "Content-Type": "image/jpeg"},
+            content=encoded.tobytes(),
+        )
+
+    assert response.status_code == 200
+    face = response.json()["faces"][0]
+    assert face["bbox"] == pytest.approx([0.95, 0.9, 0.05, 0.1])
+    assert face["landmarks"] == [[0.0, 64.0]]
+
+
+def test_inference_failures_return_json_500_while_invalid_video_returns_400():
+    settings = Settings(
+        landmarker_path=Path("missing-landmarker.task"),
+        embedding_model_path=Path("missing-embedding.xml"),
+        service_token="test-token",
+        representative_vectors=1,
+        enrollment_frames=1,
+    )
+    app = create_app(settings, FailingModels())
+    image = np.zeros((64, 64, 3), dtype=np.uint8)
+    _, encoded = cv2.imencode(".jpg", image)
+    headers = {"Authorization": "Bearer test-token"}
+    payload = {
+        "model": {
+            "model_id": "openvino/face-reidentification-retail-0095",
+            "version": settings.model_version,
+            "dimension": 256,
+            "normalization": "l2",
+        },
+        "candidates": [],
+    }
+    with TestClient(app, raise_server_exceptions=False) as client:
+        client.put("/internal/v1/face/sessions/errors", headers=headers, json=payload)
+        frame = client.post(
+            "/internal/v1/face/sessions/errors/frames",
+            headers={**headers, "Content-Type": "image/jpeg"},
+            content=encoded.tobytes(),
+        )
+        enrollment = client.post(
+            "/internal/v1/face/enrollments/extract",
+            headers={**headers, "Content-Type": "video/mp4"},
+            content=make_test_mp4(1),
+        )
+        invalid_video = client.post(
+            "/internal/v1/face/enrollments/extract",
+            headers={**headers, "Content-Type": "video/mp4"},
+            content=b"not a video",
+        )
+
+    for response in (frame, enrollment):
+        assert response.status_code == 500
+        assert response.headers["content-type"].startswith("application/json")
+        assert response.json()["detail"]["code"] == "INTERNAL_ERROR"
+    assert invalid_video.status_code == 400
+    assert invalid_video.json()["detail"]["code"] == "INVALID_MEDIA"
+
+
+def test_idle_session_cleanup_clears_cached_vectors():
+    now = [100.0]
+    settings = Settings(
+        landmarker_path=Path("missing-landmarker.task"),
+        embedding_model_path=Path("missing-embedding.xml"),
+        service_token="test-token",
+        session_idle_seconds=5,
+    )
+    app = create_app(settings, EnrollmentFakeModels(), monotonic=lambda: now[0])
+    headers = {"Authorization": "Bearer test-token"}
+    payload = {
+        "model": {
+            "model_id": "openvino/face-reidentification-retail-0095",
+            "version": settings.model_version,
+            "dimension": 256,
+            "normalization": "l2",
+        },
+        "candidates": [{"student_id": "student-test", "vectors": [[1.0] + [0.0] * 255]}],
+    }
+    with TestClient(app) as client:
+        assert client.put("/internal/v1/face/sessions/expired", headers=headers, json=payload).status_code == 200
+        cached_vector = app.state.sessions["expired"].candidates["student-test"][0]
+        now[0] += 6
+
+        assert app.state.cleanup_expired_sessions() == 1
+        assert "expired" not in app.state.sessions
+        assert not cached_vector.any()
+        expired_frame = client.post(
+            "/internal/v1/face/sessions/expired/frames",
+            headers={**headers, "Content-Type": "image/jpeg"},
+            content=b"not-an-image",
+        )
+
+    assert expired_frame.status_code == 404
 
 
 def test_internal_enrollment_extract_accepts_raw_video_with_service_token():
