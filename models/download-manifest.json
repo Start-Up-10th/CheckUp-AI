@@ -1,0 +1,40 @@
+{
+  "downloaded_at_utc": "2026-09-29T09:24:18.025099+00:00",
+  "openvino_model": "face-reidentification-retail-0095@2023.0-fp32",
+  "files": [
+    {
+      "file": "face_landmarker.task",
+      "bytes": 3758596,
+      "source_url": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task",
+      "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+      "verified": [
+        "bundle_zip_crc"
+      ],
+      "source_last_modified": "Wed, 03 May 2023 18:02:21 GMT",
+      "source_generation": "1683136941468629"
+    },
+    {
+      "file": "face-reidentification-retail-0095.xml",
+      "bytes": 237585,
+      "source_url": "https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/face-reidentification-retail-0095/FP32/face-reidentification-retail-0095.xml",
+      "sha256": "6cf60c341452155e35c467510c6c50a96ade5b2bd8f88c5a90902e905d8a80c3",
+      "verified": [
+        "official_size_and_sha384",
+        "openvino_ir_xml"
+      ],
+      "source_last_modified": "Tue, 17 Oct 2023 15:53:36 GMT",
+      "source_generation": null
+    },
+    {
+      "file": "face-reidentification-retail-0095.bin",
+      "bytes": 4427256,
+      "source_url": "https://storage.openvinotoolkit.org/repositories/open_model_zoo/2023.0/models_bin/1/face-reidentification-retail-0095/FP32/face-reidentification-retail-0095.bin",
+      "sha256": "21319b95e54181857f99e22dc32ec89770eca2969a1432cfa1594bffc94edd62",
+      "verified": [
+        "official_size_and_sha384"
+      ],
+      "source_last_modified": "Tue, 17 Oct 2023 15:53:36 GMT",
+      "source_generation": null
+    }
+  ]
+}

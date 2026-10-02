@@ -1,0 +1,14 @@
+**
+!Dockerfile
+!pyproject.toml
+!uv.lock
+!face_api.py
+!face_config.py
+!face_models.py
+!face_pipeline.py
+!face_tracker.py
+!models/
+!models/download-manifest.json
+!infra/
+!infra/download_models.py
+!infra/healthcheck.py

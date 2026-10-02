@@ -10,7 +10,7 @@ import { syncSkills } from './sync-skills.mjs';
 function fixture(t) {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'dorm-harness-test-'));
   const repo = path.join(temp, 'repo');
-  const inputs = ['README.md', 'AGENTS.md', 'CLAUDE.md', 'package.json', '.gitignore', '.codex', '.claude', '.agents', 'docs', 'contracts', 'web', 'server', 'ai', 'infra', 'tests', 'harness', '.github'];
+  const inputs = ['README.md', 'AGENTS.md', 'CLAUDE.md', 'package.json', '.gitignore', '.codex', '.claude', '.agents', 'docs', 'contracts', 'web', 'server', 'ai', 'infra', 'tests', 'harness', '.github', 'Dockerfile', '.dockerignore', 'models/download-manifest.json'];
   mkdirSync(repo);
   const excluded = new Set(['node_modules', '.next', '.venv', '.git', 'target', 'build', 'dist', 'coverage', '.local', 'datasets', 'models', 'backups', 'auth.json', 'settings.local.json', 'sessions', 'log']);
   const safeInput = source => {
@@ -19,7 +19,11 @@ function fixture(t) {
       && !(name.startsWith('.env') && name !== '.env.example')
       && !/\.(?:pem|key|log|onnx|pt|pth)$/.test(name);
   };
-  for (const item of inputs) cpSync(path.join(ROOT, item), path.join(repo, item), { recursive: true, filter: safeInput });
+  for (const item of inputs) {
+    const destination = path.join(repo, item);
+    mkdirSync(path.dirname(destination), { recursive: true });
+    cpSync(path.join(ROOT, item), destination, { recursive: true, filter: safeInput });
+  }
   t.after(() => {
     const resolved = path.resolve(temp);
     assert.equal(path.dirname(resolved), path.resolve(os.tmpdir()));
