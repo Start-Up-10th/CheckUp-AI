@@ -21,7 +21,7 @@
 | SRC-USER-UI | 사용자 최종 첨부 a1a0d14c… | [student-ui.txt](student-ui.txt), 원문 보존 |
 | SRC-ADMIN-UI | 관리자 첨부 ea15d672… | [admin-ui.txt](admin-ui.txt), 원문 보존 |
 | SRC-QR-FACE | 사용자 메시지에 붙여넣은 최신 QR/얼굴 표 | [qr-face.md](qr-face.md), 항목별 전사 |
-| SRC-DATAGSM | 사용자 `DataGSM 값` 메시지 | endpoint/필드/role/개발 callback은 identity 명세에 그대로 기록 |
+| SRC-DATAGSM | 사용자 `DataGSM 값` 메시지와 2026-09-26 `DataGSM 연동 구조 수정안` | userinfo 중첩 구조·ID/학번·status·role 판정·OAuth state 분리·학생 OpenAPI 경계를 identity 명세와 DEC-002에 기록. 2026-09-27 사용자 결정으로 `STUDENT_COUNCIL`(학생회)은 관리자에서 제외 |
 | SRC-STACK | 사용자 기술 스택·Docker/GitHub Actions 메시지 | scope/operations 명세 |
 | SRC-GSMSV | 사용자 GSM SV 설명 | [gsm-sv.md](gsm-sv.md) |
 | SRC-CONSENT-IMAGE | 얼굴정보 필수 동의 이미지 | 최신 필수 두 항목·선택 공지 수신은 student-ui에도 존재 |
@@ -30,6 +30,8 @@
 | SRC-HOME-IMAGE | 최종 관리자 홈 이미지 | [admin-home.png](admin-home.png), 공실은 후속 사용자 결정으로 제외 |
 | SRC-COMMUNITY | 사용자 `봉사 학생 추가/제거… 맞음`, 공지 CRUD·목록·수신 연결 결정 | community 명세 |
 | SRC-NOTION-CHECKUPZIP | `check_Up_Notion2.zip`; 사용자가 2026-09-24에 일부 항목만 채택 | [승인 발췌](notion-checkup-accepted.md). 얼굴 등록 자동 촬영, 관리자 모바일 5탭, 봉사 `+ / −`만 최신 결정으로 반영. ZIP의 나머지 내용 전체를 승인한 것은 아님. |
+| SRC-VOLUNTEER-DUTY | 사용자 2026-09-30 `매일 당일에 봉사할 사람을 … 사감쌤이 … 지정되면 그 사람한테 봉사해야한다고 알림이 가고 … 자치위원이 확인하고 봉사 차감`, `앞으로 해야할 횟수`, `꼭 4명으로 정하진 말자`, `지정 취소도 가능` | community 명세 REQ-COM-002·005·006, DEC-020 |
+| SRC-VOLUNTEER-PENALTY | 사용자 2026-10-01 `봉사가 기숙사에서 뭐 잘못하면 받는 벌칙`, `명단에 전교생 다 들어가게`, `호실번호, 이름, 학번 모두 검색`, `잘못함 -> 사감쌤이 그 학생 봉사 1회 추가 -> 사감썜이 당일 봉사자로 선택`, `자치위원이 완료 및 차감`, `사감썜이 그냥 횟수를 깎아주는경우도 있어서 필요해`, `증 차감 버튼 옆에 당일 봉사자로 선택 … 봉사 횟수가 없는애면 봉사가 없습니다` | community 명세 REQ-COM-001·002·006, DEC-021 |
 | SRC-HANDOFF | 이 작업 직전 assistant의 16개 절 전체 명세 + AGENTS 제안 | 통합 기준으로 유지하되 assistant 추론은 직접 사용자 결정과 구분 |
 | SRC-CORRECTIONS | 아래 정정 목록 | 구안 복구 방지 |
 
@@ -44,7 +46,10 @@
 | 촬영본 프로필 등록 | 프로필 빈값, 추후 임의 사진; 얼굴 원본 재사용 금지 |
 | 얼굴 동의 선택·QR 대체 | 얼굴 동의 필수, QR은 별도 인증 수단 |
 | 얼굴 재등록·QR 만료 임박 알림 | 둘 다 삭제 |
-| 학생 봉사 활동 목록 | 학생은 본인 누적 횟수만 조회; 관리자 +1/-1 조정은 SRC-NOTION-CHECKUPZIP에 따라 허용 |
+| 학생 봉사 활동 목록 | 학생은 본인 남은 횟수만 조회; 관리자 +1/-1 조정은 SRC-NOTION-CHECKUPZIP에 따라 허용 |
+| 봉사 횟수 = 적립 횟수, 봉사 알림 = `+1` 적립 때 | SRC-VOLUNTEER-DUTY에 따라 앞으로 해야 할 횟수, 봉사 알림은 당일 봉사자 지정 때 |
+| 봉사자 명단 추가·제외, 봉사자 추가 화면 | SRC-VOLUNTEER-PENALTY에 따라 명단은 전체 학생이고 추가·제외 없음 |
+| 당일 봉사자는 봉사자 명단에서 지정, 차감은 `−`로 따로 | SRC-VOLUNTEER-PENALTY에 따라 봉사 횟수 1 이상인 학생을 지정하고, 자치위원의 완료가 차감 |
 | 침대 1~4·고정 4인실 | 이름순·표시 순번, DataGSM 배정 수를 분모로 사용 |
 | 관리자 호실 조회→편집 2단계 | 후속 호실 이미지와 결정의 직접 출석/미출석 선택+저장 |
 | 공실 UI | 빈 방 없다는 전제로 제외 |

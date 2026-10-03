@@ -5,9 +5,12 @@
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {
-    "harness:check": "node harness/check.mjs && node --test harness/check.test.mjs harness/hooks.test.mjs",
+    "harness:check": "node harness/check.mjs && node --test harness/check.test.mjs harness/hooks.test.mjs harness/sync-upstream.test.mjs",
     "harness:lint": "node harness/check.mjs",
     "harness:sync": "node harness/sync-skills.mjs",
-    "harness:test": "node --test harness/check.test.mjs harness/hooks.test.mjs"
+    "harness:test": "node --test harness/check.test.mjs harness/hooks.test.mjs harness/sync-upstream.test.mjs",
+    "harness:sync:upstream": "node harness/sync-upstream.mjs",
+    "harness:worklog": "node harness/log-local-work.mjs",
+    "ai:integrate": "node harness/integrate-ai.mjs"
   }
 }

@@ -1,0 +1,259 @@
+openapi: 3.1.0
+info:
+  title: CheckUp QR 출석 API
+  version: 1.0.0
+  description: |
+    관리자 QR 발급·유지·종료와 학생 QR 스캔 출석 API다. 제공자는 CheckUp-server, 소비자는 관리자 웹 QR 화면과 학생 웹 `/qr`이다.
+    정책과 판정 규칙은 [QR 계획](../docs/plans/qr-attendance.md)과 DEC-018을 따른다.
+
+    - 인증: `SESSION` 쿠키(DEC-016). 웹은 `credentials: "include"`로 호출한다.
+    - 로그인하지 않은 요청은 Spring Security가 401 `ErrorResponse`(`UNAUTHORIZED`)로 막는다.
+    - 오류는 모두 공통 `ErrorResponse`이며 웹은 `code`로 분기한다.
+    - 시각은 모두 ISO-8601 UTC 문자열이다.
+    - 출석 용도는 `DORMITORY`(기숙사, 기본) / `STUDY_ROOM`(자습실)이다.
+servers:
+  - url: /
+    description: 웹과 같은 출처. 웹은 `/api/*`를 Spring 서버로 프록시한다.
+security:
+  - sessionCookie: []
+tags:
+  - name: 관리자 QR
+    description: 관리자 QR 화면. 페이지마다 독립 세션이며 다른 관리자·탭의 세션에 영향을 주지 않는다(REQ-ATT-003).
+  - name: 학생 QR 스캔
+    description: 학생 QR 스캔 출석(REQ-ATT-005).
+paths:
+  /api/v1/qr:
+    post:
+      tags: [관리자 QR]
+      summary: QR 세션 생성
+      description: |
+        페이지 진입·용도 탭 선택마다 새 QR 세션과 첫 토큰을 발급한다.
+        토큰 만료는 `min(발급 + 15분, 다음 08:00 KST)`이고 lease는 60초다.
+        관리자 여부는 요청마다 DB의 회원 역할로 판정한다.
+      operationId: createQrSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QrCreateRequest"
+      responses:
+        "201":
+          description: 세션 생성
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QrSessionResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/AdminOnly"
+  /api/v1/qr/{sessionId}/heartbeat:
+    post:
+      tags: [관리자 QR]
+      summary: QR 세션 유지와 현재 토큰 조회
+      description: |
+        약 20초마다 호출한다. lease를 연장하고 현재 `qrUrl`을 돌려준다.
+        토큰 만료 30초 전부터, 또는 08:00 운영일 경계를 넘으면 새 토큰으로 교체한다.
+        교체해도 이전 토큰의 원래 만료 시각은 늘어나지 않는다.
+      operationId: heartbeatQrSession
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: 세션 유지
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QrSessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/AdminOnly"
+        "404":
+          description: |
+            세션이 없거나, lease가 끝났거나, 다른 관리자의 세션이거나, 처리 중 종료됐다.
+            세 경우를 구분하지 않는다. 웹은 `POST /api/v1/qr`로 새 세션을 만든다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: QR_SESSION_NOT_FOUND
+                message: QR 세션이 없거나 종료되었습니다.
+  /api/v1/qr/{sessionId}/close:
+    post:
+      tags: [관리자 QR]
+      summary: QR 세션 종료
+      description: |
+        페이지 이탈·용도 탭 변경 시 이 세션만 종료한다. 본문이 없어 `navigator.sendBeacon`으로 호출할 수 있다.
+        이미 종료됐거나 다른 관리자의 세션이어도 204이며, 다른 세션에는 영향이 없다.
+      operationId: closeQrSession
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "204":
+          description: 종료(또는 이미 없음)
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/AdminOnly"
+  /api/v1/qr/attendance:
+    post:
+      tags: [학생 QR 스캔]
+      summary: QR 스캔 출석
+      description: |
+        QR 링크(`https://<웹 주소>/qr#t=<토큰>`)의 토큰으로 로그인한 학생의 출석을 처리한다.
+        학생 ID·성공 여부는 받지 않으며 body에 넣어도 무시한다. 출석 용도는 토큰을 발급한 세션의 용도다.
+        판정 순서: 모르는 토큰(`INVALID`) → 만료(`EXPIRED`) → 세션 종료·lease 만료(`CLOSED`) → 출석 저장(`APPROVED`/`DUPLICATE`).
+        판정 결과는 모두 200이다.
+      operationId: scanQrAttendance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QrScanRequest"
+      responses:
+        "200":
+          description: 판정 결과
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QrScanResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: 학생 정보가 없는 계정(교사 등). 기숙사 자치위원은 학생이라 스캔할 수 있다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: MISSING_STUDENT_INFO
+                message: 학생 정보가 없습니다.
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: SESSION
+  parameters:
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      description: "`POST /api/v1/qr` 응답의 `sessionId`"
+      schema:
+        type: string
+  responses:
+    Unauthenticated:
+      description: |
+        로그인하지 않았다. Spring Security가 `UNAUTHORIZED`로 응답한다.
+        관리자 API는 세션은 있지만 회원이 삭제된 경우 `MEMBER_NOT_FOUND`로 401을 줄 수 있다.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: UNAUTHORIZED
+            message: 로그인이 필요합니다.
+    InvalidRequest:
+      description: 요청 본문을 읽을 수 없거나 필수 값이 없다.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: INVALID_REQUEST
+            message: 요청 값이 올바르지 않습니다.
+    AdminOnly:
+      description: 관리자가 아닌 계정이다.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: ADMIN_ONLY
+            message: 관리자만 사용할 수 있습니다.
+  schemas:
+    AttendancePurpose:
+      type: string
+      enum: [DORMITORY, STUDY_ROOM]
+    QrCreateRequest:
+      type: object
+      required: [purpose]
+      properties:
+        purpose:
+          $ref: "#/components/schemas/AttendancePurpose"
+    QrSessionResponse:
+      type: object
+      required: [sessionId, purpose, qrUrl, tokenExpiresAt, leaseExpiresAt, serverTime]
+      properties:
+        sessionId:
+          type: string
+          description: 이 페이지의 QR 세션 ID. heartbeat·close에 쓴다.
+        purpose:
+          $ref: "#/components/schemas/AttendancePurpose"
+        qrUrl:
+          type: string
+          description: QR로 그릴 값. 웹은 URL을 조립하지 않고 그대로 그린다. 토큰 원문은 이 안에만 있다.
+          examples: ["http://localhost:3000/qr#t=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+        tokenExpiresAt:
+          type: string
+          format: date-time
+          description: 현재 토큰 만료 시각. `남은 유효 시간` 카운트다운 기준이다.
+        leaseExpiresAt:
+          type: string
+          format: date-time
+          description: 다음 heartbeat가 없으면 세션이 끝나는 시각
+        serverTime:
+          type: string
+          format: date-time
+          description: 응답 시점 서버 시각. 브라우저 시계 오차 보정에 쓴다.
+    QrScanRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 1
+          description: QR 링크의 `#t=` 뒤 토큰. 32바이트 난수의 base64url(패딩 없음, 43자)이며 형식이 다르면 `INVALID`다.
+    QrScanResponse:
+      type: object
+      required: [result]
+      properties:
+        result:
+          type: string
+          enum: [APPROVED, DUPLICATE, EXPIRED, CLOSED, INVALID]
+          description: |
+            - APPROVED: 새로 출석 처리됨 → `승인되었습니다.` 후 메인
+            - DUPLICATE: 같은 학생·용도·운영일에 이미 출석 → `이미 출석 처리된 QR입니다.`
+            - EXPIRED: 발급 때 정한 만료 시각이 지남 → `만료된 QR입니다. 다시 스캔해 주세요.`
+            - CLOSED: 토큰은 유효하지만 세션이 종료됐거나 lease가 끝남 → `지금은 출석 인증을 받고 있지 않습니다.`
+            - INVALID: 발급하지 않았거나 형식이 다르거나 기록이 남아 있지 않은 토큰 → `유효하지 않은 QR입니다.`
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: 서버 `ErrorCode` 이름
+        message:
+          type: string
+          description: 오류 코드의 기본 메시지. 예외 원문을 담지 않는다.
+        errors:
+          type: array
+          description: 요청 값 검증 실패 때만 있다. 거부된 입력값은 담지 않는다.
+          items:
+            type: object
+            required: [field, reason]
+            properties:
+              field:
+                type: string
+              reason:
+                type: string

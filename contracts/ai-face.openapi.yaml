@@ -1,48 +1,240 @@
 openapi: 3.1.0
 info:
-  title: Dormitory Face Inference Service
+  title: Dormitory Face Service API
   version: 0.1.0
+  description: Private Spring-to-AI face inference endpoints. Spring authenticates browser requests with its SESSION cookie and calls this service with a separate service bearer token. DataGSM OAuth access tokens and Spring SESSION cookies are not accepted here.
 paths:
   /health/live:
     get:
-      responses: {"200": {description: live}}
+      summary: Process liveness
+      security: []
+      responses:
+        "200":
+          description: Process is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: ok}
   /health/ready:
     get:
+      summary: Inference readiness
+      security: []
       responses:
-        "200": {description: model and calibration ready}
-        "503": {description: model or calibration unavailable}
+        "200":
+          description: Models and inference configuration are ready.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: ready}
+        "503":
+          description: Models or inference configuration are unavailable.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: not_ready}
   /internal/v1/face/enrollments/extract:
     post:
-      security: [{serviceBearer: []}]
+      summary: Extract representative vectors from one enrollment video
+      description: Returns vectors only. Spring owns consent, user identity, duplicate checks, and persistence.
+      security:
+        - serviceBearer: []
       requestBody:
         required: true
         content:
-          video/webm: {schema: {type: string, format: binary}}
-          video/mp4: {schema: {type: string, format: binary}}
+          video/webm:
+            schema: {type: string, format: binary}
+          video/mp4:
+            schema: {type: string, format: binary}
       responses:
         "200":
-          description: 100 sampled frames reviewed and 20 representative vectors returned
-          content: {application/json: {schema: {$ref: "#/components/schemas/EnrollmentResponse"}}}
-        "422": {description: quality or identity consistency failure}
+          description: Sampled frames and returned up to 20 representative vectors.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EnrollmentResponse"}
+        "400":
+          description: Unsupported or undecodable video.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "413":
+          description: Request body exceeds the configured size limit.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
+        "422":
+          description: Insufficient quality, multiple identities, or low-light video.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
+        "500":
+          description: Unexpected inference error.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
+        "503":
+          description: Inference models are not ready.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
+  /internal/v1/face/sessions/{session_id}:
+    put:
+      summary: Create or replace an in-memory recognition session
+      description: Candidate vectors stay in memory for this session and are cleared when the session is replaced or deleted.
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SessionPayload"}
+      responses:
+        "200":
+          description: Session is ready.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: ready}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422":
+          description: Invalid payload, incompatible model, invalid vector, or duplicate student IDs.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
+    delete:
+      summary: Delete a recognition session
+      description: Idempotent; returns deleted even when the session does not exist.
+      security:
+        - serviceBearer: []
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Session was cleared or did not exist.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: deleted}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "422":
+          description: Invalid session identifier.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
   /internal/v1/face/sessions/{session_id}/frames:
     post:
-      security: [{serviceBearer: []}]
+      summary: Recognize faces in one camera frame
+      description: Returns inference results only. It does not authorize or record attendance.
+      security:
+        - serviceBearer: []
       parameters:
-        - {name: session_id, in: path, required: true, schema: {type: string}}
-        - {name: X-Frame-Id, in: header, required: false, schema: {type: string}}
+        - $ref: "#/components/parameters/SessionId"
+        - name: X-Frame-Id
+          in: header
+          required: false
+          schema: {type: string}
+          description: Caller-provided frame correlation ID; echoed in the response.
       requestBody:
         required: true
         content:
-          image/jpeg: {schema: {type: string, format: binary}}
-          image/webp: {schema: {type: string, format: binary}}
+          image/jpeg:
+            schema: {type: string, format: binary}
+          image/webp:
+            schema: {type: string, format: binary}
       responses:
         "200":
-          description: one result per detected face; attendance is not mutated
-          content: {application/json: {schema: {$ref: "#/components/schemas/FrameResponse"}}}
+          description: One result for each face detected in this frame.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/FrameResponse"}
+        "400":
+          description: Unsupported or undecodable image.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404":
+          description: Recognition session is not active.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
+        "422":
+          description: Invalid session identifier or request headers.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
+        "413":
+          description: Request body exceeds the configured size limit.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
+        "500":
+          description: Unexpected inference error.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
+        "503":
+          description: Inference models are not ready.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorResponse"}
 components:
   securitySchemes:
-    serviceBearer: {type: http, scheme: bearer}
+    serviceBearer:
+      type: http
+      scheme: bearer
+      description: FACE_SERVICE_TOKEN for Spring-to-AI calls. This is not an OAuth access token and must never reach the browser.
+  parameters:
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema: {type: string, minLength: 1}
+  responses:
+    Unauthorized:
+      description: Missing or invalid service bearer token.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorResponse"}
   schemas:
+    ErrorResponse:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          oneOf:
+            - {$ref: "#/components/schemas/ErrorDetail"}
+            - type: array
+              description: FastAPI request-validation errors.
+              items:
+                type: object
+                properties:
+                  loc: {type: array, items: {} }
+                  msg: {type: string}
+                  type: {type: string}
+    ErrorDetail:
+      type: object
+      required: [code]
+      properties:
+        code: {type: string}
+        message: {type: string}
     VectorModel:
       type: object
       required: [model_id, version, dimension, normalization]
@@ -50,19 +242,50 @@ components:
         model_id: {type: string}
         version: {type: string}
         dimension: {type: integer, const: 256}
-        normalization: {type: string, enum: [l2]}
+        normalization: {type: string, const: l2}
+    Candidate:
+      type: object
+      required: [student_id, vectors]
+      properties:
+        student_id:
+          type: string
+          minLength: 1
+          description: Opaque string form of the DataGSM student.id canonical ID; not a database key or studentNumber.
+        vectors:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: array
+            minItems: 256
+            maxItems: 256
+            items: {type: number}
+    SessionPayload:
+      type: object
+      required: [model, candidates]
+      properties:
+        model: {$ref: "#/components/schemas/VectorModel"}
+        candidates:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/Candidate"}
+      description: Student IDs must be unique. Every vector must match the declared model and contain 256 finite values.
     EnrollmentResponse:
       type: object
       required: [model, reviewedFrames, acceptedFrames, vectors]
       properties:
         model: {$ref: "#/components/schemas/VectorModel"}
-        reviewedFrames: {type: integer, maximum: 100}
-        acceptedFrames: {type: integer}
+        reviewedFrames: {type: integer, minimum: 0, maximum: 100}
+        acceptedFrames: {type: integer, minimum: 0, maximum: 100}
         vectors:
           type: array
-          minItems: 20
+          minItems: 1
           maxItems: 20
-          items: {type: array, minItems: 256, maxItems: 256, items: {type: number}}
+          items:
+            type: array
+            minItems: 256
+            maxItems: 256
+            items: {type: number}
     FrameResponse:
       type: object
       required: [frameId, faces]
@@ -77,15 +300,25 @@ components:
       properties:
         trackId: {type: string}
         bbox: {type: array, minItems: 4, maxItems: 4, items: {type: number}}
-        landmarks: {type: array, items: {type: array, minItems: 2, maxItems: 2, items: {type: number}}}
-        quality: {type: object}
+        landmarks:
+          type: array
+          items: {type: array, minItems: 2, maxItems: 2, items: {type: number}}
+        quality:
+          type: object
+          required: [brightness, sharpness, issues]
+          properties:
+            brightness: {type: number}
+            sharpness: {type: number}
+            issues: {type: array, items: {type: string}}
         recognition:
           type: object
           required: [status, studentId, score, margin]
           properties:
             status: {type: string, enum: [KNOWN, UNKNOWN, NOT_ATTEMPTED]}
-            studentId: {type: [string, "null"]}
+            studentId:
+              type: [string, "null"]
+              description: Exact canonical ID from a KNOWN candidate; null for UNKNOWN or NOT_ATTEMPTED.
             score: {type: [number, "null"]}
             margin: {type: [number, "null"]}
-        attempts: {type: integer}
+        attempts: {type: integer, minimum: 0}
         qrRecommended: {type: boolean}
