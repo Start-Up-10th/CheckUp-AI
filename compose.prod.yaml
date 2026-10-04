@@ -1,0 +1,15 @@
+name: checkup-ai
+
+services:
+  ai:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      FACE_SERVICE_TOKEN: ${FACE_SERVICE_TOKEN}
+      FACE_MATCH_THRESHOLD: ${FACE_MATCH_THRESHOLD}
+      FACE_MATCH_MARGIN: ${FACE_MATCH_MARGIN}
+      FACE_SESSION_IDLE_SECONDS: 300
+      FACE_SESSION_CLEANUP_INTERVAL_SECONDS: 60
