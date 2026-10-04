@@ -1,0 +1,158 @@
+name: Deploy AI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'contracts/**'
+      - 'harness/**'
+      - 'tests/**'
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-ai
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Deploy to school server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          timeout: 60s
+          command_timeout: 25m
+          script: |
+            set -e
+
+            exec 9>/tmp/checkup-ai-deploy.lock
+            if ! flock -n 9; then
+              echo "ERROR: another deploy is running. Aborting."
+              exit 1
+            fi
+
+            cd ~/CheckUp-AI
+
+            retry() {
+              n=0
+              until "$@"; do
+                n=$((n+1))
+                if [ "$n" -ge 3 ]; then
+                  return 1
+                fi
+                echo "retry $n/3: $*"
+                sleep 5
+              done
+            }
+
+            wait_ready() {
+              max=$1
+              i=1
+              while [ "$i" -le "$max" ]; do
+                STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:8000/health/ready || true)
+                case " $OK_CODES " in
+                  *" $STATUS "*)
+                    echo "Health check passed (status: $STATUS)"
+                    return 0
+                    ;;
+                esac
+                echo "Waiting for ai... (attempt $i/$max, status: $STATUS)"
+                sleep 6
+                i=$((i+1))
+              done
+              return 1
+            }
+
+            rollback() {
+              echo "=== Rolling back to $PREV_COMMIT ==="
+              git reset --hard "$PREV_COMMIT"
+              if [ -z "$PREV_IMAGE" ]; then
+                echo "CRITICAL: no previous image. Manual recovery needed."
+                return 0
+              fi
+              if ! sudo docker tag "$PREV_IMAGE" checkup-ai-ai:latest; then
+                echo "CRITICAL: could not restore previous image tag."
+                return 0
+              fi
+              sudo docker compose -f compose.prod.yaml up -d --no-build || true
+              if wait_ready 10; then
+                echo "Rollback OK: previous version is running."
+              else
+                echo "CRITICAL: rollback also failed health check."
+              fi
+            }
+
+            echo "=== disk before ==="
+            df -h /
+
+            if [ ! -f .env ]; then
+              echo "ERROR: .env file missing. Aborting deploy."
+              exit 1
+            fi
+
+            if ! grep -qE '^FACE_SERVICE_TOKEN=.+' .env; then
+              echo "ERROR: FACE_SERVICE_TOKEN is empty in .env. Aborting deploy."
+              exit 1
+            fi
+
+            if grep -qE '^FACE_MATCH_THRESHOLD=.+' .env && grep -qE '^FACE_MATCH_MARGIN=.+' .env; then
+              OK_CODES="200"
+            else
+              OK_CODES="200 503"
+            fi
+            echo "accepted health codes: $OK_CODES"
+
+            AVAIL_GB=$(df -BG --output=avail / | tail -n 1 | tr -dc '0-9')
+            if [ "$AVAIL_GB" -lt 6 ]; then
+              echo "WARNING: only ${AVAIL_GB}GB free. Pruning docker cache..."
+              sudo docker builder prune -af
+              sudo docker image prune -f
+              AVAIL_GB=$(df -BG --output=avail / | tail -n 1 | tr -dc '0-9')
+              if [ "$AVAIL_GB" -lt 6 ]; then
+                echo "ERROR: still only ${AVAIL_GB}GB free. Aborting before changing anything."
+                exit 1
+              fi
+            fi
+
+            PREV_COMMIT=$(git rev-parse HEAD)
+            PREV_IMAGE=$(sudo docker inspect --format '{{.Image}}' checkup-ai-ai-1 2>/dev/null || true)
+            echo "prev commit: $PREV_COMMIT"
+            echo "prev image: ${PREV_IMAGE:-none}"
+
+            retry git fetch origin main
+            git reset --hard origin/main
+
+            if ! sudo docker compose -f compose.prod.yaml config -q; then
+              echo "ERROR: compose.prod.yaml is invalid."
+              git reset --hard "$PREV_COMMIT"
+              exit 1
+            fi
+
+            if ! sudo docker compose -f compose.prod.yaml up -d --build; then
+              echo "ERROR: docker compose build/up failed"
+              rollback
+              exit 1
+            fi
+
+            if wait_ready 30; then
+              sudo docker builder prune -f --filter "until=72h" || true
+              sudo docker image prune -f || true
+              echo "=== disk after ==="
+              df -h /
+              echo "Deploy successful."
+            else
+              echo "=== AI logs before rollback ==="
+              sudo docker compose -f compose.prod.yaml logs ai --tail 80 || true
+              rollback
+              exit 1
+            fi
