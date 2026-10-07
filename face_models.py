@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -72,6 +72,25 @@ class InferenceModels:
         self._compiled = None
 
     def detect(self, bgr: np.ndarray) -> list[FaceObservation]:
+        """Eager extraction retained for enrollment's representative selection."""
+        observations: list[FaceObservation] = []
+        embedding: np.ndarray | None = None
+        try:
+            for observation in self.detect_faces(bgr):
+                embedding = self.embed_face(bgr, observation)
+                observations.append(replace(observation, embedding=embedding))
+                embedding = None
+            return observations
+        except BaseException:
+            if embedding is not None:
+                embedding.fill(0)
+            for observation in observations:
+                if observation.embedding is not None:
+                    observation.embedding.fill(0)
+            raise
+
+    def detect_faces(self, bgr: np.ndarray) -> list[FaceObservation]:
+        """Detect geometry and quality without aligning or embedding a face."""
         import cv2
 
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
@@ -93,13 +112,12 @@ class InferenceModels:
                     float(max(0.0, y1 - y0) / height),
                 )
                 five = _five_landmarks(points)
-                aligned = _align_face(bgr, five)
                 crop = bgr[
                     max(0, int(y0)) : min(height, int(y1)),
                     max(0, int(x0)) : min(width, int(x1)),
                 ]
+                gray = None
                 try:
-                    embedding = self.embed(aligned)
                     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.size else None
                     brightness = float(np.mean(gray)) if gray is not None else 0.0
                     sharpness = float(cv2.Laplacian(crop, cv2.CV_64F).var()) if crop.size else 0.0
@@ -107,28 +125,54 @@ class InferenceModels:
                         FaceObservation(
                             bbox,
                             tuple((float(x), float(y)) for x, y in five),
-                            embedding,
+                            None,
                             brightness,
                             sharpness,
                             _pose_bucket(five),
                         )
                     )
                 finally:
-                    aligned.fill(0)
+                    if gray is not None:
+                        gray.fill(0)
             return observations
         finally:
             rgb.fill(0)
 
+    def embed_face(self, bgr: np.ndarray, observation: FaceObservation) -> np.ndarray:
+        """Embed one eligible face using its original, unclipped pixel landmarks."""
+        aligned = _align_face(bgr, np.asarray(observation.landmarks, dtype=np.float32))
+        try:
+            return self.embed(aligned)
+        finally:
+            aligned.fill(0)
+
     def embed(self, aligned_bgr: np.ndarray) -> np.ndarray:
         blob = np.transpose(aligned_bgr.astype(np.float32), (2, 0, 1))[None, ...]
+        outputs = None
+        vector: np.ndarray | None = None
+        normalized: np.ndarray | None = None
         try:
-            result = self._compiled([blob])[self._compiled.output(0)]
+            outputs = self._compiled([blob])
+            result = outputs[self._compiled.output(0)]
             vector = np.asarray(result, dtype=np.float32).reshape(-1)
             norm = float(np.linalg.norm(vector))
-            if vector.size != self.metadata.dimension or not np.isfinite(vector).all() or norm == 0:
+            if (
+                vector.size != self.metadata.dimension
+                or not np.isfinite(vector).all()
+                or not np.isfinite(norm)
+                or norm == 0
+            ):
                 raise ValueError("embedding model returned an invalid vector")
-            return (vector / norm).astype(np.float32, copy=True)
+            normalized = vector / norm
+            return normalized.astype(np.float32, copy=True)
         finally:
+            for temporary in (normalized, vector):
+                if temporary is not None and temporary.flags.writeable:
+                    temporary.fill(0)
+            if outputs is not None:
+                for output in outputs.values():
+                    if isinstance(output, np.ndarray) and output.flags.writeable:
+                        output.fill(0)
             blob.fill(0)
 
 

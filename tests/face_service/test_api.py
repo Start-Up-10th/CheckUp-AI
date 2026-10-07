@@ -30,6 +30,13 @@ class FakeModels:
     def close(self) -> None:
         pass
 
+    def detect_faces(self, image: np.ndarray) -> list[FaceObservation]:
+        return self.detect(image)
+
+    def embed_face(self, _image: np.ndarray, observation: FaceObservation) -> np.ndarray:
+        assert observation.embedding is not None
+        return observation.embedding.copy()
+
 
 class EnrollmentFakeModels:
     metadata = ModelMetadata()
@@ -45,6 +52,13 @@ class EnrollmentFakeModels:
 
     def close(self) -> None:
         pass
+
+    def detect_faces(self, image: np.ndarray) -> list[FaceObservation]:
+        return self.detect(image)
+
+    def embed_face(self, _image: np.ndarray, observation: FaceObservation) -> np.ndarray:
+        assert observation.embedding is not None
+        return observation.embedding.copy()
 
 
 class BoundaryModels(EnrollmentFakeModels):
@@ -262,7 +276,7 @@ def test_idle_session_cleanup_clears_cached_vectors():
     }
     with TestClient(app) as client:
         assert client.put("/internal/v1/face/sessions/expired", headers=headers, json=payload).status_code == 200
-        cached_vector = app.state.sessions["expired"].candidates["student-test"][0]
+        cached_vector = app.state.sessions["expired"].gallery.vectors[0, 0]
         now[0] += 6
 
         assert app.state.cleanup_expired_sessions() == 1

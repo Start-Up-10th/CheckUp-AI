@@ -10,7 +10,7 @@ import { syncSkills } from './sync-skills.mjs';
 function fixture(t) {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'dorm-harness-test-'));
   const repo = path.join(temp, 'repo');
-  const inputs = ['README.md', 'AGENTS.md', 'CLAUDE.md', 'package.json', '.gitignore', '.codex', '.claude', '.agents', 'docs', 'contracts', 'web', 'server', 'ai', 'infra', 'tests', 'harness', '.github', 'Dockerfile', '.dockerignore', 'models/download-manifest.json'];
+  const inputs = ['README.md', 'AGENTS.md', 'CLAUDE.md', 'package.json', '.gitignore', '.codex', '.claude', '.agents', 'docs', 'contracts', 'web', 'server', 'ai', 'infra', 'tests', 'harness', '.github', 'Dockerfile', '.dockerignore', 'models/download-manifest.json', 'face_api.py', 'face_models.py', 'face_pipeline.py', 'face_tracker.py', 'benchmarks'];
   mkdirSync(repo);
   const excluded = new Set(['node_modules', '.next', '.venv', '.git', 'target', 'build', 'dist', 'coverage', '.local', 'datasets', 'models', 'backups', 'auth.json', 'settings.local.json', 'sessions', 'log']);
   const safeInput = source => {

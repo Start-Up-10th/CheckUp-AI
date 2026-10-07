@@ -83,4 +83,8 @@ CI/CD 구성·정적 검사는 서비스 개발 전에 준비할 수 있고, 테
 | 2026-09-24 | Notion ZIP 항목 3개 사용자 승인 반영 | 얼굴 자동 촬영, 관리자 휴대폰 5탭, 봉사 횟수 `+ / −`를 출처·명세·수용 시나리오·분야별 계획에 반영. 제품 코드는 미구현. 이번 변경 뒤 자동 검사는 실행하지 않음. |
 | 2026-09-30 | AI 이슈 #6 인증 경계 구현·검증 | AI `/internal/*` 선행 인증 미들웨어와 4개 경로의 credential 거부 매트릭스 추가. `ruff check` 통과, AI pytest 20개 통과(제3자 anyio deprecation 경고 1개), `npm run harness:check` 통과(하네스 테스트 23/23). |
 
-AI FastAPI 내부 얼굴 API와 서비스 토큰 경계는 구현돼 있다. Spring 공개 API, 브라우저 연동, 제품 E2E와 실기기 검증은 미완료다.
+| 2026-10-07 | 얼굴 지연 개선 구현·자동 검사·합성 비교 측정 | AI pytest 114개·Ruff·하네스 23개 통과. Spring 격리 PostgreSQL 스키마 전체 build 성공(511 통과·live-AI 1 skip), 하네스 20개 통과. 200×20 후보 비교 scalar 91.288ms→gallery 0.626ms; 전체 카메라 지연·정확도·운영 배포는 미검증. [세부 기록](../reviews/face-latency-2026-10-07.md). |
+
+AI FastAPI 내부 얼굴 API와 서비스 토큰 경계는 구현돼 있다. 형제 저장소 CheckUp-server의 Spring 얼굴 API에는
+2026-10-07 시작 시각 기준 프레임 간격과 지연 계측을 추가했다. 브라우저 연동, 제품 E2E와 실기기 검증은 미완료다.
+[이번 구현·자동 검사·벤치마크·배포 조건](../reviews/face-latency-2026-10-07.md)을 참조한다.
