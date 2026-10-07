@@ -68,6 +68,11 @@ GitHub Actions의 조건부 건너뜀은 required check에서도 성공 상태�
 AI FastAPI 얼굴 서비스와 자동 테스트가 존재한다. 2026-10-07 지연 개선에서는 후보 비교·조건부 임베딩·
 세션 폐기와 Spring 시작 시각 기준 프레임 간격을 검증했다.
 [실행 범위와 미검증 항목](reviews/face-latency-2026-10-07.md)을 함께 확인한다.
+2026-10-07 배포 실패 수정은 Docker Linux 이미지 빌드와 실제 컨테이너에서 미사용 MediaPipe 런타임
+의존성 부재, FaceLandmarker/OpenVINO 초기화, 합성 빈 프레임 추론을 확인했다. 운영 재배포는 실행하지
+않았다. [세부 분석](reviews/ai-deploy-disk-full-2026-10-07.md).
+같은 변경에서 `\.venv\Scripts\python.exe -m pytest`는 114개 통과,
+`\.venv\Scripts\ruff.exe check .`와 `npm.cmd run harness:check`(23개 검사)도 통과했다.
 ACC-FACE-005·006은 자동 검사 증빙이 있지만 실제 카메라·UI E2E 검증이 없어 `implemented`로 둔다.
 현재 공통 스킬은 4개다. 파일 등록·동기화 확인과 두 도구의 실제 세션 동작 검증을 구분한다.
 Claude 실행·두 도구의 별도 새 세션 작업, GitHub Actions 원격 실행, DataGSM, 카메라, GSM SV 배포는 로컬 하네스 검사 대상이 아니다.
