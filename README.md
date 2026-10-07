@@ -176,6 +176,20 @@ const response = await fetch(`${apiBaseUrl}/api/v1/face/enrollments`, {
 
 실제 배포 전에 웹과 API의 same-site 주소, HTTPS, CORS의 정확한 프론트 origin, DataGSM callback, Spring에서 AI 사설 주소로의 통신, 토큰 secret 주입을 확인합니다. 현재 문서는 이미지와 연결 방법을 설명하며 레지스트리·GitHub Actions 배포·특정 클라우드 설정이나 실제 서버 배포까지 구성한 것은 아닙니다.
 
+## 인식 지연 진단
+
+인식 세션은 후보 행렬을 최초 PUT에서 준비하고, 기존 3품질 프레임·쿨다운 조건을 통과한 얼굴에만
+임베딩을 계산합니다. 모델과 인식 임계값은 그대로 사용합니다. `face_api` logger를 DEBUG로 설정하면
+단계별 시간과 처리 개수만 기록합니다.
+
+```powershell
+python benchmarks/face_matching.py --students 1 50 200
+```
+
+이 벤치마크는 합성 데이터의 후보 비교만 측정합니다. 전체 카메라 지연이나 인식 정확도를 대신하지 않습니다.
+Spring의 시작 시각 기준 200ms 제한에는 V17 마이그레이션이 필요합니다.
+[구현·검증 결과와 배포 순서](docs/reviews/face-latency-2026-10-07.md)를 확인하세요.
+
 ## 개발 및 검증
 
 ```powershell

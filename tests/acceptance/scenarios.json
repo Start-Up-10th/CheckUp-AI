@@ -227,9 +227,9 @@
         "성공 기록·알림이 중복되지 않는다",
         "실패가 기존 출석을 지우지 않는다"
       ],
-      "status": "specified",
-      "implementation": [],
-      "evidence": []
+      "status": "implemented",
+      "implementation": ["face_api.py", "face_pipeline.py", "face_tracker.py"],
+      "evidence": ["docs/reviews/face-latency-2026-10-07.md"]
     },
     {
       "id": "ACC-FACE-006",
@@ -244,9 +244,9 @@
         "영상 프레임을 각각 실패로 세지 않는다",
         "트랙 간 횟수가 섞이지 않고 성공/이탈 때 정리된다"
       ],
-      "status": "specified",
-      "implementation": [],
-      "evidence": []
+      "status": "implemented",
+      "implementation": ["face_api.py", "face_tracker.py"],
+      "evidence": ["docs/reviews/face-latency-2026-10-07.md"]
     },
     {
       "id": "ACC-FACE-007",

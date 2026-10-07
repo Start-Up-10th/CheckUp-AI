@@ -16,6 +16,16 @@ the service returns recognition results to the backend contract.
   only after enough quality observations from one tracked identity.
 - Low-light, blur, too-small, and extreme-pose observations are not used for recognition.
 - Request-scoped image, video, decoded-frame, and embedding buffers are cleared in `finally` blocks.
+- Gallery matching preserves per-student top-three averaging, negative scores, singleton/tie semantics,
+  and scalar decisions at threshold/margin boundaries for 1/50/200 students and 1/2/3/20 vectors.
+- Recognition embeds only the third eligible quality observation and eligible observations after the
+  existing cooldown. Enrollment retains eager embeddings. Quality/configuration skips never guess an ID.
+- PUT replacement, DELETE, cancellation, and graceful lifespan shutdown preserve in-flight galleries
+  until request release, then wipe their vectors and trackers without wiping a replacement session.
+- Timing logs contain fixed stage durations/counts/outcomes only; no student/session/frame IDs or biometrics.
+
+See [the latency implementation record](../reviews/face-latency-2026-10-07.md) for commands, automated
+results, the synthetic matching benchmark, Spring PostgreSQL timing/lease checks, and rollout prerequisites.
 
 ## Accuracy and false-positive evaluation
 

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import secrets
 import time
-from collections.abc import Callable
-from contextlib import asynccontextmanager
+from collections.abc import Callable, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from typing import Annotated, Literal
 
@@ -19,9 +20,9 @@ from pydantic import BaseModel, Field
 from face_config import Settings
 from face_models import FaceObservation, InferenceModels, ModelMetadata
 from face_pipeline import (
+    CandidateGallery,
     FaceServiceError,
     clear_observations,
-    match_embedding,
     normalize_vector,
     quality_issues,
     select_representatives,
@@ -30,6 +31,41 @@ from face_pipeline import (
 from face_tracker import TrackManager
 
 VectorValues = Annotated[list[float], Field(min_length=256, max_length=256)]
+_LOGGER = logging.getLogger(__name__)
+
+
+class _FrameTimings:
+    """Opt-in stage durations only; never log frame, session or student data."""
+
+    def __init__(self) -> None:
+        self.enabled = _LOGGER.isEnabledFor(logging.DEBUG)
+        self.started = time.perf_counter_ns() if self.enabled else 0
+        self.durations: dict[str, float] = {}
+        self.faces = 0
+        self.embeddings = 0
+        self.outcome = "error"
+
+    @contextmanager
+    def measure(self, stage: str) -> Iterator[None]:
+        if not self.enabled:
+            yield
+            return
+        started = time.perf_counter_ns()
+        try:
+            yield
+        finally:
+            elapsed = (time.perf_counter_ns() - started) / 1_000_000
+            self.durations[stage] = self.durations.get(stage, 0.0) + elapsed
+
+    def finish(self) -> None:
+        if self.enabled:
+            self.durations["total"] = (time.perf_counter_ns() - self.started) / 1_000_000
+            _LOGGER.debug("face_frame_timing_ms %s", {
+                **self.durations,
+                "faces": self.faces,
+                "embeddings": self.embeddings,
+                "outcome": self.outcome,
+            })
 
 
 class VectorModel(BaseModel):
@@ -114,7 +150,7 @@ class FrameResponse(BaseModel):
 
 @dataclass
 class Session:
-    candidates: dict[str, list[np.ndarray]]
+    gallery: CandidateGallery
     tracker: TrackManager
     last_activity_at: float
     in_flight: int = 0
@@ -129,11 +165,25 @@ def create_app(
     cfg = settings or Settings()
     metadata = ModelMetadata(version=cfg.model_version)
     sessions: dict[str, Session] = {}
+    retired_sessions: dict[int, Session] = {}
+    sessions_drained = asyncio.Event()
+    sessions_drained.set()
     lock = asyncio.Lock()
 
     def discard_session(session: Session) -> None:
         session.tracker.reset()
-        _clear_vectors(session.candidates)
+        session.gallery.clear()
+        retired_sessions.pop(id(session), None)
+        if not retired_sessions:
+            sessions_drained.set()
+
+    def retire_session(session: Session) -> None:
+        session.closing = True
+        if session.in_flight == 0:
+            discard_session(session)
+        else:
+            retired_sessions[id(session)] = session
+            sessions_drained.clear()
 
     def cleanup_expired_sessions(now: float | None = None) -> int:
         current = monotonic() if now is None else now
@@ -176,6 +226,7 @@ def create_app(
             runtime = InferenceModels(str(cfg.landmarker_path), str(cfg.embedding_model_path), metadata)
         app.state.models = runtime
         app.state.sessions = sessions
+        app.state.retired_sessions = retired_sessions
         app.state.cleanup_expired_sessions = cleanup_expired_sessions
 
         async def reap_expired_sessions() -> None:
@@ -192,9 +243,10 @@ def create_app(
                 await cleanup_task
             except asyncio.CancelledError:
                 pass
-            for session in sessions.values():
-                discard_session(session)
+            for session in list(sessions.values()) + list(retired_sessions.values()):
+                retire_session(session)
             sessions.clear()
+            await sessions_drained.wait()
             if runtime is not None and models is None:
                 runtime.close()
 
@@ -318,6 +370,9 @@ def create_app(
     async def put_session(
         session_id: Annotated[str, Path(min_length=1)], payload: SessionPayload
     ) -> SessionReadyResponse:
+        candidates: dict[str, list[np.ndarray]] = {}
+        gallery: CandidateGallery | None = None
+        installed = False
         try:
             incoming = ModelMetadata(
                 payload.model.model_id,
@@ -326,20 +381,26 @@ def create_app(
                 payload.model.normalization,
             )
             validate_model(incoming, metadata)
-            candidates = {
-                item.student_id: [normalize_vector(vector) for vector in item.vectors]
-                for item in payload.candidates
-            }
+            for item in payload.candidates:
+                if item.student_id in candidates:
+                    raise FaceServiceError("MODEL_MISMATCH", "duplicate student IDs are not allowed")
+                candidates[item.student_id] = []
+                for vector in item.vectors:
+                    candidates[item.student_id].append(normalize_vector(vector))
+            # Preserve the legacy PUT normalization followed by match normalization.
+            gallery = CandidateGallery.from_candidates(candidates)
+            async with lock:
+                old = sessions.get(session_id)
+                if old is not None:
+                    retire_session(old)
+                sessions[session_id] = Session(gallery, TrackManager(), monotonic())
+                installed = True
         except FaceServiceError as exc:
             raise handle_error(exc) from exc
-        if len(candidates) != len(payload.candidates):
-            raise handle_error(FaceServiceError("MODEL_MISMATCH", "duplicate student IDs are not allowed"))
-        async with lock:
-            old = sessions.get(session_id)
-            if old is not None:
-                old.tracker.reset()
-                _clear_vectors(old.candidates)
-            sessions[session_id] = Session(candidates, TrackManager(), monotonic())
+        finally:
+            _clear_vectors(candidates)
+            if gallery is not None and not installed:
+                gallery.clear()
         return SessionReadyResponse(status="ready")
 
     @app.post(
@@ -369,23 +430,29 @@ def create_app(
         request: Request,
         x_frame_id: Annotated[str, Header()] = "",
     ) -> dict[str, object]:
-        runtime: InferenceModels | None = app.state.models
-        if runtime is None:
-            raise handle_error(FaceServiceError("MODEL_NOT_READY", "models are not loaded", 503))
-        if request.headers.get("content-type", "").split(";", 1)[0] not in {"image/jpeg", "image/webp"}:
-            raise handle_error(FaceServiceError("INVALID_MEDIA", "expected JPEG or WebP image", 400))
-        session = acquire_session(session_id)
-        if session is None:
-            raise handle_error(FaceServiceError("SESSION_NOT_FOUND", "session is not active", 404))
+        timings = _FrameTimings()
+        session: Session | None = None
         body: bytearray | None = None
         image: np.ndarray | None = None
         observations: list[FaceObservation] = []
         try:
-            body = await read_body(request)
-            image = cv2.imdecode(np.frombuffer(body, dtype=np.uint8), cv2.IMREAD_COLOR)
+            runtime: InferenceModels | None = app.state.models
+            if runtime is None:
+                raise FaceServiceError("MODEL_NOT_READY", "models are not loaded", 503)
+            if request.headers.get("content-type", "").split(";", 1)[0] not in {"image/jpeg", "image/webp"}:
+                raise FaceServiceError("INVALID_MEDIA", "expected JPEG or WebP image", 400)
+            session = acquire_session(session_id)
+            if session is None:
+                raise FaceServiceError("SESSION_NOT_FOUND", "session is not active", 404)
+            with timings.measure("read"):
+                body = await read_body(request)
+            with timings.measure("decode"):
+                image = cv2.imdecode(np.frombuffer(body, dtype=np.uint8), cv2.IMREAD_COLOR)
             if image is None:
                 raise FaceServiceError("INVALID_MEDIA", "frame is not a valid image", 400)
-            observations = runtime.detect(image)
+            with timings.measure("detect"):
+                observations = runtime.detect_faces(image)
+            timings.faces = len(observations)
             height, width = image.shape[:2]
             boxes = [_response_bbox(observation.bbox) for observation in observations]
             landmarks = [
@@ -396,17 +463,21 @@ def create_app(
             results = []
             for index, (observation, track) in enumerate(zip(observations, tracks, strict=True)):
                 issues = quality_issues(observation)
-                if observation.embedding is None or issues or not session.tracker.observe_quality(track):
+                if issues or not session.tracker.observe_quality(track):
                     recognition = {"status": "NOT_ATTEMPTED", "studentId": None, "score": None, "margin": None}
                 elif cfg.match_threshold is None or cfg.match_margin is None:
                     recognition = {"status": "NOT_ATTEMPTED", "studentId": None, "score": None, "margin": None}
                 else:
-                    outcome = match_embedding(
-                        observation.embedding,
-                        session.candidates,
-                        cfg.match_threshold,
-                        cfg.match_margin,
-                    )
+                    probe: np.ndarray | None = None
+                    try:
+                        with timings.measure("embed"):
+                            timings.embeddings += 1
+                            probe = runtime.embed_face(image, observation)
+                        with timings.measure("match"):
+                            outcome = session.gallery.match(probe, cfg.match_threshold, cfg.match_margin)
+                    finally:
+                        if probe is not None:
+                            probe.fill(0)
                     recognition = {
                         "status": outcome.status,
                         "studentId": outcome.student_id if outcome.status == "KNOWN" else None,
@@ -432,18 +503,22 @@ def create_app(
                         "qrRecommended": track.failures >= 4,
                     }
                 )
+            timings.outcome = "success"
             return {"frameId": x_frame_id, "faces": results}
         except FaceServiceError as exc:
             raise handle_error(exc) from exc
         except Exception as exc:
             raise handle_error(FaceServiceError("INTERNAL_ERROR", "frame inference failed", 500)) from exc
         finally:
-            if image is not None:
-                image.fill(0)
-            clear_observations(observations)
-            if body is not None:
-                body[:] = b"\x00" * len(body)
-            release_session(session_id, session)
+            with timings.measure("cleanup"):
+                if image is not None:
+                    image.fill(0)
+                clear_observations(observations)
+                if body is not None:
+                    body[:] = b"\x00" * len(body)
+                if session is not None:
+                    release_session(session_id, session)
+            timings.finish()
 
     @app.delete(
         "/internal/v1/face/sessions/{session_id}",
@@ -456,10 +531,9 @@ def create_app(
     ) -> SessionDeletedResponse:
         session = sessions.get(session_id)
         if session:
-            session.closing = True
-            if session.in_flight == 0:
+            retire_session(session)
+            if session.in_flight == 0 and sessions.get(session_id) is session:
                 sessions.pop(session_id, None)
-                discard_session(session)
         return SessionDeletedResponse(status="deleted")
 
     return app
