@@ -13,8 +13,19 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /build
 
 COPY pyproject.toml uv.lock ./
+# Keep MediaPipe's unused JAX/audio dependencies and duplicate OpenCV wheel out
+# of the runtime. MediaPipe initialization currently imports matplotlib, so retain it.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+    uv sync --frozen --no-dev --no-install-project \
+        --no-install-package jax \
+        --no-install-package jaxlib \
+        --no-install-package ml-dtypes \
+        --no-install-package opt-einsum \
+        --no-install-package scipy \
+        --no-install-package sounddevice \
+        --no-install-package cffi \
+        --no-install-package pycparser \
+        --no-install-package opencv-contrib-python
 
 COPY infra/download_models.py infra/download_models.py
 COPY models/download-manifest.json models/download-manifest.json
