@@ -91,6 +91,70 @@ def test_detection_clears_rgb_when_landmarker_fails():
     assert captured_rgb and not captured_rgb[0].any()
 
 
+class FakeOpenVINOCompiled:
+    def __init__(self, precision):
+        self.precision = precision
+
+    def get_property(self, name):
+        assert name == "INFERENCE_PRECISION_HINT"
+        return self.precision
+
+
+class FakeOpenVINOCore:
+    def __init__(self, capabilities=("FP32", "BF16"), resolved_precision="bfloat16"):
+        self.capabilities = capabilities
+        self.resolved_precision = resolved_precision
+        self.compile_args = None
+
+    def get_property(self, device, name):
+        assert device == "CPU"
+        assert name == "OPTIMIZATION_CAPABILITIES"
+        return self.capabilities
+
+    def compile_model(self, *args):
+        self.compile_args = args
+        return FakeOpenVINOCompiled(self.resolved_precision)
+
+
+def test_default_embedding_compile_keeps_openvino_precision_default():
+    core = FakeOpenVINOCore()
+    model = object()
+
+    compiled = face_models._compile_embedding_model(core, model, "f32")
+
+    assert core.compile_args == (model, "CPU")
+    assert isinstance(compiled, FakeOpenVINOCompiled)
+
+
+def test_bf16_embedding_compile_requires_and_applies_runtime_support():
+    core = FakeOpenVINOCore()
+    model = object()
+
+    compiled = face_models._compile_embedding_model(core, model, "bf16")
+
+    assert core.compile_args == (
+        model,
+        "CPU",
+        {"INFERENCE_PRECISION_HINT": "bf16"},
+    )
+    assert isinstance(compiled, FakeOpenVINOCompiled)
+
+
+def test_bf16_embedding_compile_rejects_unsupported_cpu():
+    core = FakeOpenVINOCore(capabilities=("FP32",))
+
+    with pytest.raises(RuntimeError, match="not supported by the CPU"):
+        face_models._compile_embedding_model(core, object(), "bf16")
+    assert core.compile_args is None
+
+
+def test_bf16_embedding_compile_rejects_unapplied_precision_hint():
+    core = FakeOpenVINOCore(resolved_precision="float32")
+
+    with pytest.raises(RuntimeError, match="did not apply the requested BF16"):
+        face_models._compile_embedding_model(core, object(), "bf16")
+
+
 @pytest.mark.parametrize("fail", [False, True])
 def test_embed_face_uses_original_landmarks_and_clears_aligned_image(monkeypatch, fail):
     runtime = InferenceModels.__new__(InferenceModels)

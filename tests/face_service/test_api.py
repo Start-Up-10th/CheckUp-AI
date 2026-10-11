@@ -318,6 +318,68 @@ def test_internal_enrollment_extract_accepts_raw_video_with_service_token():
     assert all(len(vector) == 256 for vector in payload["vectors"])
 
 
+def test_repeated_enrollment_extraction_preserves_an_existing_recognition_session():
+    settings = Settings(
+        landmarker_path=Path("missing-landmarker.task"),
+        embedding_model_path=Path("missing-embedding.xml"),
+        service_token="service-token",
+        representative_vectors=3,
+        enrollment_frames=3,
+        match_threshold=0.5,
+        match_margin=0.1,
+    )
+    app = create_app(settings, EnrollmentFakeModels())
+    headers = {"Authorization": "Bearer service-token"}
+    existing_vector = [0.0, 1.0] + [0.0] * 254
+    session_payload = {
+        "model": ModelMetadata().__dict__,
+        "candidates": [{"student_id": "student-synthetic", "vectors": [existing_vector]}],
+    }
+    _, image = cv2.imencode(".jpg", np.full((64, 64, 3), 127, dtype=np.uint8))
+    video = make_test_mp4(frame_count=3)
+    with TestClient(app) as client:
+        response = client.put(
+            "/internal/v1/face/sessions/reenrollment", headers=headers, json=session_payload
+        )
+        assert response.status_code == 200
+        session = app.state.sessions["reenrollment"]
+        gallery_before = session.gallery.vectors.copy()
+        for _ in range(2):
+            frame = client.post(
+                "/internal/v1/face/sessions/reenrollment/frames",
+                headers={**headers, "Content-Type": "image/jpeg"},
+                content=image.tobytes(),
+            )
+            assert frame.status_code == 200
+        track = session.tracker.tracks[0]
+        assert track.quality_observations == 2
+
+        for _ in range(2):
+            extraction = client.post(
+                "/internal/v1/face/enrollments/extract",
+                headers={**headers, "Content-Type": "video/mp4"},
+                content=video,
+            )
+            assert extraction.status_code == 200
+            result = extraction.json()
+            assert result["acceptedFrames"] == 3
+            assert result["vectors"] == [[1.0] + [0.0] * 255] * 3
+            assert app.state.sessions["reenrollment"] is session
+            assert not session.closing and not session.gallery.cleared
+            np.testing.assert_array_equal(session.gallery.vectors, gallery_before)
+            assert session.tracker.tracks == [track]
+            assert track.quality_observations == 2 and track.failures == 0
+
+        frame = client.post(
+            "/internal/v1/face/sessions/reenrollment/frames",
+            headers={**headers, "Content-Type": "image/jpeg"},
+            content=image.tobytes(),
+        )
+        assert frame.status_code == 200
+        recognition = frame.json()["faces"][0]["recognition"]
+        assert recognition["status"] == "UNKNOWN" and recognition["studentId"] is None
+
+
 @pytest.mark.parametrize(
     ("method", "path", "request_kwargs"),
     [

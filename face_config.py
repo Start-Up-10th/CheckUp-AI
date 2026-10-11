@@ -36,8 +36,13 @@ class Settings:
     session_cleanup_interval_seconds: float = float(
         os.getenv("FACE_SESSION_CLEANUP_INTERVAL_SECONDS", "60")
     )
+    inference_precision_hint: str = field(
+        default_factory=lambda: os.getenv("FACE_INFERENCE_PRECISION_HINT", "f32").strip().lower()
+    )
 
     def __post_init__(self) -> None:
+        if self.inference_precision_hint not in {"f32", "bf16"}:
+            raise ValueError("FACE_INFERENCE_PRECISION_HINT must be f32 or bf16")
         if (
             not isfinite(self.session_idle_seconds)
             or not isfinite(self.session_cleanup_interval_seconds)
@@ -48,7 +53,17 @@ class Settings:
 
     @property
     def model_version(self) -> str:
-        return os.getenv("FACE_MODEL_VERSION", "face-reidentification-retail-0095@2023.0-fp32")
+        configured_version = os.getenv("FACE_MODEL_VERSION")
+        precision = "fp32" if self.inference_precision_hint == "f32" else "bf16"
+        version = configured_version or f"face-reidentification-retail-0095@2023.0-{precision}"
+        if precision == "bf16":
+            if version.endswith("-fp32"):
+                version = f"{version[:-5]}-bf16"
+            elif not version.endswith("-bf16"):
+                version = f"{version}-bf16"
+        elif version.endswith("-bf16"):
+            version = f"{version[:-5]}-fp32"
+        return version
 
     @property
     def ready_for_inference(self) -> bool:

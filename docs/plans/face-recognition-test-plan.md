@@ -9,6 +9,7 @@ the service returns recognition results to the backend contract.
 - A frame with two faces produces two independent `faces[]` results and stable track IDs.
 - A below-threshold or below-margin match is `UNKNOWN` with `studentId: null`.
 - Candidate model metadata mismatch is rejected; vectors are not compared across model versions.
+- The optional BF16 inference hint is rejected if the CPU cannot apply BF16; its model version differs from FP32 while both return normalized float32 256D vectors.
 - Bounding boxes and pixel landmarks are clipped to the decoded frame before returning; malformed non-finite coordinates return a JSON inference error.
 - Frame and enrollment inference exceptions return JSON `500 INTERNAL_ERROR`; undecodable enrollment media remains `400 INVALID_MEDIA`.
 - Idle recognition sessions expire on schedule, never expire while a frame is in flight, and clear cached candidate vectors when removed.
@@ -33,6 +34,8 @@ Use a consented, labeled validation set split by person and capture session. Rep
 true accept rate, false accept rate, false reject rate, unknown rate, score distributions, and
 the effect of threshold/margin. Thresholds must be calibrated from held-out data and configured
 through deployment settings; they are not inferred from MediaPipe confidence.
+Compare FP32 and BF16 on the same held-out identities before enabling BF16. Re-enroll all vectors
+under the selected precision and do not mix the model versions in one recognition session.
 
 ## Low-light evaluation
 
