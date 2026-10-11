@@ -43,8 +43,13 @@ paths:
                   status: {type: string, const: not_ready}
   /internal/v1/face/enrollments/extract:
     post:
-      summary: Extract representative vectors from one enrollment video
-      description: Returns vectors only. Spring owns consent, user identity, duplicate checks, and persistence.
+      summary: Extract representative vectors for initial enrollment or re-enrollment
+      description: >-
+        Stateless vector extraction shared by initial enrollment and re-enrollment.
+        Each video goes through the same quality and identity-consistency checks.
+        Extraction does not read enrollment state, persist vectors, or update any
+        recognition session. Spring owns consent, user identity, enrollment policy,
+        and persistence.
       security:
         - serviceBearer: []
       requestBody:
@@ -89,7 +94,16 @@ paths:
   /internal/v1/face/sessions/{session_id}:
     put:
       summary: Create or replace an in-memory recognition session
-      description: Candidate vectors stay in memory for this session and are cleared when the session is replaced or deleted.
+      description: >-
+        Replaces the complete candidate gallery only after payload validation; this
+        is not a per-student merge. For re-enrollment, send the same student_id with
+        replacement vectors and include every other candidate that must remain.
+        No preliminary DELETE is required. Successful replacement creates a fresh
+        tracker and resets track history and recognition attempts. Invalid payloads
+        leave the previous session intact. Candidate vectors stay in memory; retired
+        vectors are cleared after the last in-flight request releases the old session.
+        Automatic camera updates require Spring to send this PUT for each affected
+        session to the same AI process that holds that session.
       security:
         - serviceBearer: []
       parameters:
@@ -111,13 +125,13 @@ paths:
                   status: {type: string, const: ready}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "422":
-          description: Invalid payload, incompatible model, invalid vector, or duplicate student IDs.
+          description: Invalid payload, incompatible model, invalid vector, or duplicate student IDs; the previous session remains unchanged.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/ErrorResponse"}
     delete:
       summary: Delete a recognition session
-      description: Idempotent; returns deleted even when the session does not exist.
+      description: Idempotent; returns deleted even when the session does not exist. In-flight requests suppress retired-session results, and vectors are cleared after the last in-flight request releases the session.
       security:
         - serviceBearer: []
       parameters:
@@ -141,7 +155,12 @@ paths:
   /internal/v1/face/sessions/{session_id}/frames:
     post:
       summary: Recognize faces in one camera frame
-      description: Returns inference results only. It does not authorize or record attendance.
+      description: >-
+        Returns inference results only. It does not authorize or record attendance.
+        If a session is replaced or closed before a successful frame result is
+        returned, the response is 200 with the same frameId and an empty faces array
+        rather than results from the retired gallery. Frames acquired after a
+        successful PUT use the replacement gallery and fresh tracker.
       security:
         - serviceBearer: []
       parameters:
@@ -160,7 +179,7 @@ paths:
             schema: {type: string, format: binary}
       responses:
         "200":
-          description: One result for each face detected in this frame.
+          description: One result for each detected face; faces is empty when none are detected or the acquired session was replaced or closed before the result was returned.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/FrameResponse"}
@@ -269,7 +288,7 @@ components:
           type: array
           maxItems: 200
           items: {$ref: "#/components/schemas/Candidate"}
-      description: Student IDs must be unique. Every vector must match the declared model and contain 256 finite values.
+      description: Complete replacement candidate list, not a partial update. Student IDs must be unique. Every vector must match the declared model and contain 256 finite values. Omitted candidates are removed after a successful PUT.
     EnrollmentResponse:
       type: object
       required: [model, reviewedFrames, acceptedFrames, vectors]

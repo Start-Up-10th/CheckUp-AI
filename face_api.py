@@ -422,6 +422,9 @@ def create_app(
             }
         },
         responses={
+            200: {
+                "description": "Per-face results; frames from a replaced or closing session return an empty faces list."
+            },
             400: {"model": ErrorResponse, "description": "Unsupported or undecodable image."},
             401: {"model": ErrorResponse, "description": "Missing or invalid service bearer token."},
             404: {"model": ErrorResponse, "description": "Recognition session is not active."},
@@ -508,6 +511,9 @@ def create_app(
                         "qrRecommended": track.failures >= 4,
                     }
                 )
+            # A streamed upload can resume after PUT/DELETE retired this session.
+            if session.closing or sessions.get(session_id) is not session:
+                results = []
             timings.outcome = "success"
             return {"frameId": x_frame_id, "faces": results}
         except FaceServiceError as exc:

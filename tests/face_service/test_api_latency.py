@@ -85,9 +85,9 @@ def encoded_image():
     return encoded.tobytes()
 
 
-def send_frame(client, image):
+def send_frame(client, image, session_id=SESSION):
     return client.post(
-        f"/internal/v1/face/sessions/{SESSION}/frames",
+        f"/internal/v1/face/sessions/{session_id}/frames",
         headers={"Content-Type": "image/jpeg", "X-Frame-Id": "frame-private"},
         content=image,
     )
@@ -215,6 +215,76 @@ def test_multiple_faces_keep_attempts_and_embedding_gates_isolated():
         assert all(not probe.any() for probe in models.probes)
 
 
+def test_repeated_put_replaces_same_student_synthetic_vectors_and_keeps_other_session():
+    models = MetadataModels()
+    app = create_app(settings(), models)
+    image = encoded_image()
+    other_id = "other-session-synthetic"
+    with TestClient(app, headers=AUTH) as client:
+        install_session(client)
+        assert client.put(
+            f"/internal/v1/face/sessions/{other_id}", json=payload()
+        ).status_code == 200
+        other = app.state.sessions[other_id]
+        other_vectors = other.gallery.vectors.copy()
+        for _ in range(2):
+            assert send_frame(client, image, other_id).status_code == 200
+        other_track = other.tracker.tracks[0]
+
+        for _ in range(3):
+            response = send_frame(client, image)
+        assert response.json()["faces"][0]["recognition"]["studentId"] == "student-private"
+        models.vector_indices = (1,)
+        for _ in range(3):
+            response = send_frame(client, image)
+        assert response.json()["faces"][0]["recognition"]["status"] == "UNKNOWN"
+        original = app.state.sessions[SESSION]
+        assert original.tracker.tracks[0].failures == 1
+        assert original.tracker.tracks[0].cooldown_frames == 5
+
+        for _ in range(3):
+            previous = app.state.sessions[SESSION]
+            previous_vectors = previous.gallery.vectors
+            response = client.put(
+                f"/internal/v1/face/sessions/{SESSION}", json=payload(vector_index=1)
+            )
+            assert response.status_code == 200 and response.json() == {"status": "ready"}
+            current = app.state.sessions[SESSION]
+            assert current is not previous and not current.closing
+            assert previous.closing and previous.gallery.cleared
+            assert not previous_vectors.any() and not previous.gallery.counts.any()
+            assert not previous.tracker.tracks and id(previous) not in app.state.retired_sessions
+            assert not current.tracker.tracks and not current.gallery.cleared
+            np.testing.assert_array_equal(
+                current.gallery.vectors[0, 0], [0.0, 1.0] + [0.0] * 254
+            )
+            for expected_count in (1, 2):
+                response = send_frame(client, image)
+                assert response.status_code == 200
+                face = response.json()["faces"][0]
+                assert face["recognition"]["status"] == "NOT_ATTEMPTED"
+                assert face["attempts"] == 0 and not face["qrRecommended"]
+                track = current.tracker.tracks[0]
+                assert track.quality_observations == expected_count and track.cooldown_frames == 0
+            response = send_frame(client, image)
+            assert response.status_code == 200
+            face = response.json()["faces"][0]
+            assert face["recognition"]["status"] == "KNOWN"
+            assert face["recognition"]["studentId"] == "student-private"
+            assert face["attempts"] == 0 and not face["qrRecommended"]
+            assert app.state.sessions[other_id] is other
+            assert not other.closing and not other.gallery.cleared
+            np.testing.assert_array_equal(other.gallery.vectors, other_vectors)
+            assert other.tracker.tracks == [other_track]
+            assert other_track.quality_observations == 2
+
+        models.vector_indices = (0,)
+        response = send_frame(client, image, other_id)
+        assert response.status_code == 200
+        recognition = response.json()["faces"][0]["recognition"]
+        assert recognition["status"] == "KNOWN" and recognition["studentId"] == "student-private"
+
+
 @pytest.mark.parametrize("failure", ["detect", "embed", "match"])
 def test_inference_errors_clear_image_and_any_returned_probe(monkeypatch, failure):
     models = MetadataModels()
@@ -279,7 +349,7 @@ async def async_client(app):
 async def async_frame(client, content):
     return await client.post(
         f"/internal/v1/face/sessions/{SESSION}/frames",
-        headers={"Content-Type": "image/jpeg"}, content=content,
+        headers={"Content-Type": "image/jpeg", "X-Frame-Id": "frame-private"}, content=content,
     )
 
 
@@ -325,7 +395,7 @@ def test_in_flight_session_gallery_and_tracker_survive_until_request_release(ope
                 unblock.set()
                 result = await asyncio.wait_for(task, timeout=3)
                 assert result.status_code == 200
-                assert result.json()["faces"][0]["recognition"]["studentId"] == "student-private"
+                assert result.json() == {"frameId": "frame-private", "faces": []}
                 assert old.in_flight == 0 and old.gallery.cleared and not old.gallery.vectors.any()
                 assert not old.tracker.tracks and id(old) not in app.state.retired_sessions
                 if operation == "replace":
@@ -478,7 +548,7 @@ def test_lifespan_shutdown_waits_for_paused_upload_before_scrubbing_and_closing_
                 unblock.set()
                 response = await asyncio.wait_for(upload_task, timeout=3)
                 assert response.status_code == 200
-                assert response.json()["faces"][0]["recognition"]["studentId"] == "student-private"
+                assert response.json() == {"frameId": "frame-private", "faces": []}
                 await asyncio.wait_for(shutdown_task, timeout=3)
                 assert runtime_closed == [True]
                 assert busy.in_flight == 0 and busy.gallery.cleared

@@ -26,6 +26,18 @@
 - Regression matrix: `tests/face_service/test_api.py` covers missing, wrong, DataGSM, and SESSION-only credentials across all four protected methods, including early rejection and secret-free errors.
 - OAuth/AI end-to-end scenario `ACC-AUTH-001` stays unverified until Spring integration is implemented and exercised.
 
+## AI 얼굴 재등록 지원 — 2026-10-11
+
+최신 사용자 요청에 따라 AI 코드·테스트·내부 계약에 한해 재등록 지원을 추가한다. 기존 공통 제품 명세의 재등록 제외 정책과 Spring·DB·웹 구현은 이번 작업에서 변경하지 않는다.
+
+- 기존 `POST /internal/v1/face/enrollments/extract`를 최초 등록과 재등록에 재사용한다. 등록 여부를 조회하지 않는 추출이며, 어떤 인식 갤러리도 변경하지 않는다.
+- 기존 `PUT /internal/v1/face/sessions/{session_id}`로 검증된 전체 후보를 교체한다. 같은 학생 ID에 새 벡터를 넣고 유지할 다른 후보를 포함하며, 사전 DELETE는 필요 없다.
+- 유효하지 않은 PUT은 이전 세션을 유지하고, 유효한 PUT은 새 갤러리와 트래커를 사용한다. 이전 벡터는 마지막 처리 중 요청의 참조가 해제되면 정리한다.
+- 교체·종료된 세션의 처리 중 프레임은 성공 응답 직전에 확인해 `200 {frameId, faces: []}`로 구 결과를 생략한다. 후속 프레임은 새 갤러리를 사용한다.
+- 자동 카메라 반영은 Spring이 저장 후 관련 세션을 보유한 같은 AI 프로세스에 갱신 PUT을 보내야 한다. 해당 백엔드 연결은 이번 AI 작업 범위 밖이다.
+- 자동 테스트 검증: 반복 추출의 무상태성, 동일 학생 벡터 교체, 실패 시 기존 세션 유지, 트래커 초기화·벡터 폐기, 처리 중 PUT·DELETE·종료와 후속 프레임, 반복 PUT·독립 세션을 합성 데이터로 확인했다. 근거: `tests/face_service/test_api.py`, `tests/face_service/test_api_latency.py`.
+- 실행 결과: AI 저장소에서 `.\.venv\Scripts\python.exe -m pytest tests/face_service` 126개 통과, `.\.venv\Scripts\ruff.exe check .` 통과, `npm.cmd run harness:check` 문서 검사 및 23개 하네스 테스트 통과. 기존 의존성의 deprecation 경고 3개가 있었다. 실제 카메라·Spring 연동·운영 배포는 실행하지 않았으며 수용 시나리오 검증 상태는 변경하지 않았다.
+
 ## 계약 보완
 
 - [ ] Spring 공개 등록 API는 `SESSION` 세션에서 학생을 확인하고 동의·중복 여부를 검사한다. 실제 Spring API 경로와 request/response는 server 구현자와 별도 계약한다.
