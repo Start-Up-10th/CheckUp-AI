@@ -8,6 +8,27 @@ MODEL_ID = "openvino/face-reidentification-retail-0095"
 EMBEDDING_DIMENSION = 256
 
 
+def _compile_embedding_model(core, model, precision_hint: str):
+    if precision_hint == "f32":
+        return core.compile_model(model, "CPU")
+    if precision_hint != "bf16":
+        raise ValueError("inference precision hint must be f32 or bf16")
+
+    capabilities = {str(value).upper() for value in core.get_property("CPU", "OPTIMIZATION_CAPABILITIES")}
+    if "BF16" not in capabilities:
+        raise RuntimeError("BF16 inference was requested but is not supported by the CPU")
+    compiled = core.compile_model(
+        model,
+        "CPU",
+        {"INFERENCE_PRECISION_HINT": "bf16"},
+    )
+    resolved = str(compiled.get_property("INFERENCE_PRECISION_HINT")).lower()
+    if "bfloat16" not in resolved:
+        compiled = None
+        raise RuntimeError("OpenVINO CPU runtime did not apply the requested BF16 precision")
+    return compiled
+
+
 @dataclass(frozen=True)
 class ModelMetadata:
     model_id: str = MODEL_ID
@@ -35,10 +56,17 @@ class InferenceModels:
     only after a face has been detected and aligned from MediaPipe landmarks.
     """
 
-    def __init__(self, landmarker_path: str, embedding_model_path: str, metadata: ModelMetadata):
+    def __init__(
+        self,
+        landmarker_path: str,
+        embedding_model_path: str,
+        metadata: ModelMetadata,
+        inference_precision_hint: str = "f32",
+    ):
         self.metadata = metadata
         self._landmarker = None
         self._compiled = None
+        self.inference_precision_hint = inference_precision_hint
         try:
             import mediapipe as mp
             from mediapipe.tasks import python
@@ -61,9 +89,13 @@ class InferenceModels:
 
             core = Core()
             model = core.read_model(embedding_model_path)
-            self._compiled = core.compile_model(model, "CPU")
+            self._compiled = _compile_embedding_model(core, model, inference_precision_hint)
         except ImportError as exc:
+            self.close()
             raise RuntimeError("OpenVINO dependency is not installed") from exc
+        except BaseException:
+            self.close()
+            raise
 
     def close(self) -> None:
         if self._landmarker is not None:

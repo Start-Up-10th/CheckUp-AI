@@ -223,7 +223,12 @@ def create_app(
     async def lifespan(app: FastAPI):
         runtime = models
         if runtime is None and cfg.landmarker_path.is_file() and cfg.embedding_model_path.is_file():
-            runtime = InferenceModels(str(cfg.landmarker_path), str(cfg.embedding_model_path), metadata)
+            runtime = InferenceModels(
+                str(cfg.landmarker_path),
+                str(cfg.embedding_model_path),
+                metadata,
+                cfg.inference_precision_hint,
+            )
         app.state.models = runtime
         app.state.sessions = sessions
         app.state.retired_sessions = retired_sessions

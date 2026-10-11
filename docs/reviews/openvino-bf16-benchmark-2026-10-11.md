@@ -29,6 +29,9 @@ and [CPU device guide](https://docs.openvino.ai/2026/openvino-workflow/running-i
 
 Expose BF16 as an opt-in CPU setting, keep FP32 as the default, and put the precision in
 the model version so vectors from different inference modes cannot be mixed accidentally.
+Set `FACE_INFERENCE_PRECISION_HINT=bf16` in the AI service environment to opt in; the
+default `f32` produces the existing `@2023.0-fp32` version, while BF16 produces
+`@2023.0-bf16`. Startup fails clearly if the CPU cannot apply the requested BF16 mode.
 The API still carries normalized float32 vectors with dimension 256; there is no vector
 schema change or DB migration. Enrollments must be regenerated together under BF16 before
 using that model version. Do not enable BF16 for attendance until a representative,
