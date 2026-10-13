@@ -41,3 +41,22 @@ def test_inference_precision_hint_reads_environment(monkeypatch):
 def test_unknown_inference_precision_hint_is_rejected():
     with pytest.raises(ValueError, match="FACE_INFERENCE_PRECISION_HINT"):
         Settings(inference_precision_hint="fp16")
+
+
+def test_success_recheck_defaults_to_one_second(monkeypatch):
+    monkeypatch.delenv("FACE_SUCCESS_RECHECK_SECONDS", raising=False)
+
+    assert Settings().success_recheck_seconds == 1.0
+
+
+@pytest.mark.parametrize("seconds", ["0", "0.25", "1"])
+def test_success_recheck_reads_environment(monkeypatch, seconds):
+    monkeypatch.setenv("FACE_SUCCESS_RECHECK_SECONDS", seconds)
+
+    assert Settings().success_recheck_seconds == float(seconds)
+
+
+@pytest.mark.parametrize("seconds", [-0.1, 1.1, float("inf"), float("-inf"), float("nan")])
+def test_invalid_success_recheck_seconds_are_rejected(seconds):
+    with pytest.raises(ValueError, match="FACE_SUCCESS_RECHECK_SECONDS"):
+        Settings(success_recheck_seconds=seconds)

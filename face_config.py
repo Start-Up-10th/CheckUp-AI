@@ -39,8 +39,13 @@ class Settings:
     inference_precision_hint: str = field(
         default_factory=lambda: os.getenv("FACE_INFERENCE_PRECISION_HINT", "f32").strip().lower()
     )
+    success_recheck_seconds: float = field(
+        default_factory=lambda: float(os.getenv("FACE_SUCCESS_RECHECK_SECONDS", "1"))
+    )
 
     def __post_init__(self) -> None:
+        if not isfinite(self.success_recheck_seconds) or not 0 <= self.success_recheck_seconds <= 1:
+            raise ValueError("FACE_SUCCESS_RECHECK_SECONDS must be between 0 and 1")
         if self.inference_precision_hint not in {"f32", "bf16"}:
             raise ValueError("FACE_INFERENCE_PRECISION_HINT must be f32 or bf16")
         if (

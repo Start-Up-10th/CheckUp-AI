@@ -64,6 +64,7 @@ COPY --from=builder --chown=app:app /opt/models /app/models
 COPY --from=builder --chown=app:app /build/models/download-manifest.json /app/models/download-manifest.json
 COPY --chown=app:app \
     face_api.py \
+    face_execution.py \
     face_config.py \
     face_models.py \
     face_pipeline.py \

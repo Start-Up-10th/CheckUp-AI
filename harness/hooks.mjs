@@ -59,6 +59,7 @@ function contentFrom(payload) {
 function isAiIntegrationFile(filePath) {
   return filePath === 'face_api.py'
     || filePath === 'face_config.py'
+    || filePath === 'face_execution.py'
     || filePath === 'face_models.py'
     || filePath === 'face_pipeline.py'
     || filePath === 'face_tracker.py'
