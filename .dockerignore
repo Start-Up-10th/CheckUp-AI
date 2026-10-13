@@ -3,6 +3,7 @@
 !pyproject.toml
 !uv.lock
 !face_api.py
+!face_execution.py
 !face_config.py
 !face_models.py
 !face_pipeline.py
