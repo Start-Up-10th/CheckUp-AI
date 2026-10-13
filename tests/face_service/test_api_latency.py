@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -67,6 +68,7 @@ def settings(**overrides):
         "service_token": "synthetic-service-token",
         "match_threshold": 0.5,
         "match_margin": 0.1,
+        "success_recheck_seconds": 0,
     }
     return Settings(**(values | overrides))
 
@@ -116,6 +118,36 @@ def test_only_eligible_third_good_observation_embeds_and_buffers_are_cleared():
         assert not models.probes[0].any()
         assert all(not frame.any() for frame in models.images)
         assert app.state.sessions[SESSION].tracker.tracks[0].quality_observations == 0
+
+
+def test_recently_recognized_track_skips_embedding_until_recheck_deadline():
+    now = [10.0]
+    models = MetadataModels()
+    app = create_app(settings(success_recheck_seconds=1), models, monotonic=lambda: now[0])
+    image = encoded_image()
+    with TestClient(app, headers=AUTH) as client:
+        install_session(client)
+        for _ in range(3):
+            face = send_frame(client, image).json()["faces"][0]
+        assert face["recognition"]["status"] == "KNOWN"
+        assert len(models.probes) == 1
+
+        for expected_quality_count in (1, 2, 3):
+            face = send_frame(client, image).json()["faces"][0]
+            assert face["recognition"] == {
+                "status": "NOT_ATTEMPTED",
+                "studentId": None,
+                "score": None,
+                "margin": None,
+            }
+            assert app.state.sessions[SESSION].tracker.tracks[0].quality_observations == expected_quality_count
+        assert len(models.probes) == 1
+
+        now[0] += 1
+        face = send_frame(client, image).json()["faces"][0]
+        assert face["recognition"]["status"] == "KNOWN"
+        assert len(models.probes) == 2
+        assert all(not probe.any() for probe in models.probes)
 
 
 def test_poor_frames_do_not_advance_quality_or_decrement_failure_cooldown():
@@ -319,7 +351,7 @@ def test_debug_timings_contain_only_fixed_stage_durations_counts_and_outcome(cap
                 assert send_frame(client, encoded_image()).status_code == 200
     records = [record for record in caplog.records if record.name == "face_api"]
     assert len(records) == 3
-    stages = {"read", "decode", "detect", "embed", "match", "cleanup", "total"}
+    stages = {"admission", "read", "queue", "decode", "detect", "embed", "match", "cleanup", "total"}
     for index, record in enumerate(records):
         assert record.msg == "face_frame_timing_ms %s"
         fields = record.args
@@ -448,6 +480,58 @@ def test_cancelled_upload_scrubs_partial_body_and_releases_session(monkeypatch):
             assert not session.gallery.cleared and session.gallery.vectors.any()
             assert not models.images and not models.probes
             assert all(not any(buffer) for buffer in buffers)
+    asyncio.run(scenario())
+
+
+def test_cancelled_frame_drains_native_inference_before_scrubbing_buffers(monkeypatch):
+    buffers = []
+
+    class RetainedBuffer(bytearray):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            buffers.append(self)
+
+    class BlockingModels(MetadataModels):
+        def __init__(self):
+            super().__init__()
+            self.entered = threading.Event()
+            self.unblock = threading.Event()
+            self.worker_thread = None
+
+        def detect_faces(self, image):
+            self.worker_thread = threading.get_ident()
+            self.entered.set()
+            if not self.unblock.wait(3):
+                raise RuntimeError("synthetic detector unblock timed out")
+            return super().detect_faces(image)
+
+    monkeypatch.setattr(face_api, "bytearray", RetainedBuffer, raising=False)
+
+    async def scenario():
+        models = BlockingModels()
+        app = create_app(settings(), models)
+        async with async_client(app) as client:
+            assert (await client.put(f"/internal/v1/face/sessions/{SESSION}", json=payload())).status_code == 200
+            session = app.state.sessions[SESSION]
+            task = asyncio.create_task(async_frame(client, encoded_image()))
+            try:
+                entered = await asyncio.wait_for(asyncio.to_thread(models.entered.wait, 3), timeout=4)
+                assert entered
+                assert models.worker_thread != threading.get_ident()
+                assert buffers and any(buffers[0]) and session.in_flight == 1
+                await asyncio.sleep(0)
+                task.cancel()
+                await asyncio.sleep(0.02)
+                assert not task.done()
+                assert any(buffers[0]) and session.in_flight == 1
+            finally:
+                models.unblock.set()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=3)
+            assert session.in_flight == 0
+            assert buffers and all(not any(buffer) for buffer in buffers)
+            assert models.images and all(not image.any() for image in models.images)
+
     asyncio.run(scenario())
 
 

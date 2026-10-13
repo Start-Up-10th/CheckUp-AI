@@ -57,3 +57,8 @@ test('asks AI work to be recorded in the integrated harness', () => {
   const notice = postToolNotice({ tool_name: 'Edit', tool_input: { file_path: 'face_pipeline.py' } });
   assert.match(notice, /harness:worklog/);
 });
+
+test('recognizes the isolated AI inference executor as AI integration code', () => {
+  const notice = postToolNotice({ tool_name: 'Edit', tool_input: { file_path: 'face_execution.py' } });
+  assert.match(notice, /harness:worklog/);
+});

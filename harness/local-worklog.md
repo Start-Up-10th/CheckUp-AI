@@ -37,3 +37,7 @@ npm run harness:worklog -- "작업 내용과 검증 결과"
 - 2026-10-03: FastAPI CPU 컨테이너 이미지와 모델 build-time SHA-256 검증 다운로드, readiness healthcheck, 로컬 env 예시 추가. Docker 이미지 빌드와 컨테이너 실행/readiness는 미실행.
 
 - 2026-10-03: README에 프론트→Spring 인증·얼굴 API 연결, 미설정 CORS 전제, AI 내부 배포·환경 변수·health·단일 worker 조건과 DevOps 순서 문서화. 문서 변경이며 테스트/배포 미실행.
+
+- 2026-10-13: AI inference performance: moved frame and sliced enrollment work to a lifespan-owned single worker; bounded frame admission; skipped repeat embeddings for recently recognized tracks with quality and tracking invalidation; added detector comparison tool without enabling a detector switch. Verified 172 AI tests, ruff, harness:check, compose config, benchmark CLI, and git diff check. No labeled face accuracy benchmark was run because no approved validation sample was supplied.
+
+- 2026-10-13: Repeated-known-frame API A/B, two runs: 200 synthetic students x20 vectors, 20 warmups/120 measured per lane. Recheck disabled/enabled produced 40/3 embedding attempts (92.5% fewer); total median 12.131/11.925ms and 11.861/11.798ms; p95 16.720/14.541ms and 16.248/13.841ms. Synthetic only; detection remained about 10.7ms and no real-face accuracy claim. See docs/reviews/face-recheck-benchmark-2026-10-13.md.

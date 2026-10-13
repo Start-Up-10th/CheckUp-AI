@@ -178,6 +178,7 @@ const response = await fetch(`${apiBaseUrl}/api/v1/face/enrollments`, {
 | --- | --- | --- |
 | `FACE_SERVICE_TOKEN` | FastAPI와 Spring의 서버 secret | Spring→FastAPI 서비스 인증. 두 곳에 같은 값을 설정 |
 | `FACE_MATCH_THRESHOLD`, `FACE_MATCH_MARGIN` | FastAPI 환경 변수 | 인식 판정 기준. 실제 측정된 값을 사용 |
+| `FACE_SUCCESS_RECHECK_SECONDS` | FastAPI 환경 변수 | 성공한 얼굴 트랙 재인식 유예 시간. 기본 1초, `0`이면 비활성화 |
 | `FACE_AI_BASE_URL` | Spring 환경 변수 | FastAPI의 내부 주소 |
 | `PORT` | FastAPI 실행 환경 | 수신 포트. 기본값 `8000` |
 | `PUBLIC_ORIGIN` | Spring 환경 변수 | 로그인 완료 후 브라우저가 돌아갈 프론트 주소 |
@@ -191,14 +192,23 @@ const response = await fetch(`${apiBaseUrl}/api/v1/face/enrollments`, {
 ## 인식 지연 진단
 
 인식 세션은 후보 행렬을 최초 PUT에서 준비하고, 기존 3품질 프레임·쿨다운 조건을 통과한 얼굴에만
-임베딩을 계산합니다. 모델과 인식 임계값은 그대로 사용합니다. `face_api` logger를 DEBUG로 설정하면
-단계별 시간과 처리 개수만 기록합니다.
+임베딩을 계산합니다. 성공한 트랙은 최대 1초까지 반복 임베딩을 건너뛰며, 얼굴 이탈·저품질·위치/매칭
+모호성에는 즉시 재검사를 시작합니다. 이 동안에도 전체 후보 벡터와 인식 임계값은 그대로 유지합니다.
+동기 추론은 단일 작업자에서 실행하며 등록 영상은 프레임 단위로 추론 작업에 교차 제출됩니다.
+`face_api` logger를 DEBUG로 설정하면 단계별 시간과 처리 개수만 기록합니다.
 
 ```powershell
 python benchmarks/face_matching.py --students 1 50 200
 ```
 
+To measure the effect of suppressing repeated embeddings for a recently recognized
+track, run `python benchmarks/face_recheck_benchmark.py`. This uses synthetic data;
+the [measurement record](docs/reviews/face-recheck-benchmark-2026-10-13.md) reports
+latency and embedding counts, not real-face accuracy.
+
 이 벤치마크는 합성 데이터의 후보 비교만 측정합니다. 전체 카메라 지연이나 인식 정확도를 대신하지 않습니다.
+검출 비교는 선택된 승인 영상을 `benchmarks/face_detector_comparison.py`로 측정합니다. 합성 도형은
+실행·시간 측정에만 쓰며 얼굴 정확도 근거가 아닙니다.
 Spring의 시작 시각 기준 200ms 제한에는 V17 마이그레이션이 필요합니다.
 [구현·검증 결과와 배포 순서](docs/reviews/face-latency-2026-10-07.md)를 확인하세요.
 
